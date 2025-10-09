@@ -12,19 +12,31 @@ type Archive struct {
 	LinkID        pgtype.UUID
 	Html          pgtype.Text
 	ExtractedText pgtype.Text
-	WordCount     pgtype.Int4
+	Title         pgtype.Text
+	Byline        pgtype.Text
 	Lang          pgtype.Text
+	WordCount     pgtype.Int4
+}
+
+type Highlight struct {
+	ID         pgtype.UUID
+	LinkID     pgtype.UUID
+	Quote      string
+	Annotation pgtype.Text
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
 }
 
 type Link struct {
-	ID        pgtype.UUID
-	UserID    pgtype.UUID
-	Url       string
-	Title     pgtype.Text
-	CreatedAt pgtype.Timestamptz
-	ReadAt    pgtype.Timestamptz
-	Favorite  bool
-	SearchTsv interface{}
+	ID           pgtype.UUID
+	UserID       pgtype.UUID
+	Url          string
+	Title        pgtype.Text
+	CreatedAt    pgtype.Timestamptz
+	ReadAt       pgtype.Timestamptz
+	Favorite     bool
+	SearchTsv    interface{}
+	SourceDomain pgtype.Text
 }
 
 type LinkTag struct {

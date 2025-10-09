@@ -26,9 +26,7 @@ CREATE INDEX links_search_tsv_idx ON links USING GIN (search_tsv);
 CREATE TABLE archives (
     link_id UUID PRIMARY KEY REFERENCES links(id) ON DELETE CASCADE,
     html TEXT,
-    extracted_text TEXT,
-    word_count INTEGER,
-    lang TEXT
+    extracted_text TEXT
 );
 
 CREATE TABLE tags (

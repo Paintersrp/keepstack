@@ -1,11 +1,31 @@
+export interface TagSummary {
+  id: number;
+  name: string;
+}
+
+export interface HighlightSummary {
+  id: string;
+  quote: string;
+  annotation?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface LinkSummary {
   id: string;
   url: string;
   title: string;
+  source_domain: string;
   favorite: boolean;
   created_at: string;
   read_at?: string | null;
+  archive_title: string;
+  byline: string;
+  lang: string;
+  word_count: number;
   extracted_text: string;
+  tags: TagSummary[];
+  highlights: HighlightSummary[];
 }
 
 export interface ListLinksResponse {
@@ -42,6 +62,7 @@ async function request<T>(path: string, init?: RequestInitWithBody): Promise<T> 
 export interface ListLinksParams {
   q?: string;
   favorite?: boolean;
+  tags?: string[];
   limit?: number;
   offset?: number;
 }
@@ -50,6 +71,7 @@ export async function listLinks(params: ListLinksParams): Promise<ListLinksRespo
   const query = new URLSearchParams();
   if (params.q) query.set("q", params.q);
   if (typeof params.favorite === "boolean") query.set("favorite", String(params.favorite));
+  if (params.tags && params.tags.length > 0) query.set("tags", params.tags.join(","));
   if (typeof params.limit === "number") query.set("limit", String(params.limit));
   if (typeof params.offset === "number") query.set("offset", String(params.offset));
 

@@ -70,13 +70,33 @@ export function ListPage({ search, onSearchChange }: ListPageProps) {
                 rel="noreferrer"
                 className="text-lg font-semibold text-slate-100 hover:underline"
               >
-                {item.title || extractDomain(item.url)}
+                {item.title || item.archive_title || item.source_domain || extractDomain(item.url)}
               </a>
               {item.favorite && <span className="text-xs uppercase tracking-wide text-amber-400">Favorite</span>}
+            </div>
+            <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
+              {item.source_domain && <span>{item.source_domain}</span>}
+              {item.byline && <span>By {item.byline}</span>}
+              {item.lang && <span className="uppercase">{item.lang}</span>}
+              {item.word_count > 0 && <span>{item.word_count.toLocaleString()} words</span>}
             </div>
             <p className="text-sm text-slate-300 max-h-20 overflow-hidden">
               {item.extracted_text ? truncate(item.extracted_text, 240) : "Awaiting processing..."}
             </p>
+            {item.tags.length > 0 && (
+              <div className="flex flex-wrap gap-2 text-xs">
+                {item.tags.map((tag) => (
+                  <span key={tag.id} className="rounded-full bg-slate-800 px-2 py-1 text-slate-300">
+                    #{tag.name}
+                  </span>
+                ))}
+              </div>
+            )}
+            {item.highlights.length > 0 && (
+              <p className="text-xs text-amber-300">
+                {item.highlights.length} highlight{item.highlights.length > 1 ? "s" : ""}
+              </p>
+            )}
             <p className="text-xs text-slate-500">
               Saved {new Date(item.created_at).toLocaleString()}
             </p>
