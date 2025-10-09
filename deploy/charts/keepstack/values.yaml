@@ -1,0 +1,69 @@
+namespace: keepstack
+
+image:
+  registry: ghcr.io/example
+  tag: latest
+  pullPolicy: IfNotPresent
+  apiRepository: keepstack-api
+  workerRepository: keepstack-worker
+  webRepository: keepstack-web
+
+secrets:
+  create: true
+  name: keepstack-secrets
+  data:
+    DATABASE_URL: "postgres://keepstack:keepstack@postgres:5432/keepstack?sslmode=disable"
+    NATS_URL: "nats://nats:4222"
+    JWT_SECRET: "change-me"
+
+api:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 1
+      memory: 512Mi
+
+worker:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+web:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+
+postgres:
+  image: postgres:15.6-alpine
+  storage: 5Gi
+  secretName: keepstack-postgres
+  username: keepstack
+  password: keepstack
+
+nats:
+  image: nats:2.10.10-alpine
+  replicas: 1
+
+chrome:
+  enabled: true
+  image: browserless/chrome:1.58-chrome-stable
+  replicas: 1
+
+ingress:
+  enabled: true
+  className: nginx
+  host: keepstack.localtest.me
+  tls: false
