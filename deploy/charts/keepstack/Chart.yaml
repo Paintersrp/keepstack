@@ -1,0 +1,5 @@
+apiVersion: v2
+name: keepstack
+version: 0.1.0
+description: Helm chart deploying Keepstack components
+appVersion: "0.1.0"

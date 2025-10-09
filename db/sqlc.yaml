@@ -1,0 +1,10 @@
+version: "1"
+packages:
+  - name: db
+    path: ../apps/api/internal/db
+    engine: postgresql
+    schema:
+      - migrations
+    queries:
+      - queries
+    sql_package: pgx/v5

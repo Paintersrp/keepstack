@@ -1,0 +1,41 @@
+namespace: keepstack
+
+image:
+  registry: ghcr.io/YOUR_ORG
+  tag: "sha-<commit>"
+  pullPolicy: IfNotPresent
+
+secrets:
+  create: true
+  name: keepstack-secrets
+  data:
+    DATABASE_URL: "postgres://keepstack:strongpass@keepstack-postgres:5432/keepstack?sslmode=disable"
+    NATS_URL: "nats://keepstack-nats:4222"
+    JWT_SECRET: "replace-with-production-secret"
+
+api:
+  replicas: 3
+
+worker:
+  replicas: 2
+
+web:
+  replicas: 2
+
+postgres:
+  storage: 20Gi
+  username: keepstack
+  password: change-me
+
+nats:
+  replicas: 1
+
+chrome:
+  enabled: true
+  replicas: 1
+
+ingress:
+  enabled: true
+  className: nginx
+  host: keepstack.example.com
+  tls: true
