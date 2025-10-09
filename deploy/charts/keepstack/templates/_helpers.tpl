@@ -23,3 +23,27 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- define "keepstack.migrate.fullname" -}}
 {{- printf "%s-migrate" (include "keepstack.fullname" .) | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
+
+{{- define "keepstack.serviceAccountName.api" -}}
+{{- if .Values.serviceAccounts.api.name -}}
+{{- .Values.serviceAccounts.api.name -}}
+{{- else -}}
+{{- printf "%s-api" (include "keepstack.fullname" .) -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "keepstack.serviceAccountName.worker" -}}
+{{- if .Values.serviceAccounts.worker.name -}}
+{{- .Values.serviceAccounts.worker.name -}}
+{{- else -}}
+{{- printf "%s-worker" (include "keepstack.fullname" .) -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "keepstack.serviceAccountName.migrator" -}}
+{{- if .Values.serviceAccounts.migrator.name -}}
+{{- .Values.serviceAccounts.migrator.name -}}
+{{- else -}}
+{{- printf "%s-migrator" (include "keepstack.fullname" .) -}}
+{{- end -}}
+{{- end -}}

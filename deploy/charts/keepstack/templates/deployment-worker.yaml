@@ -17,6 +17,7 @@ spec:
         app.kubernetes.io/name: {{ include "keepstack.fullname" . }}-worker
         app.kubernetes.io/component: worker
     spec:
+      serviceAccountName: {{ include "keepstack.serviceAccountName.worker" . }}
       containers:
         - name: worker
           image: {{ printf "%s/%s:%s" .Values.image.registry .Values.image.workerRepository .Values.image.tag }}

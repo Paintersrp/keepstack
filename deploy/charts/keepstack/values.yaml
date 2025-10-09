@@ -16,6 +16,17 @@ secrets:
     NATS_URL: "nats://nats:4222"
     JWT_SECRET: "change-me"
 
+serviceAccounts:
+  api:
+    create: true
+    name: ""
+  worker:
+    create: true
+    name: ""
+  migrator:
+    create: true
+    name: ""
+
 migrate:
   image:
     repository: keepstack-api
