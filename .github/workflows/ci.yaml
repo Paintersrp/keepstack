@@ -53,6 +53,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push API image
+        id: build_api
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -61,7 +62,12 @@ jobs:
           tags: ${{ env.REGISTRY }}/keepstack-api:${{ env.TAG }}
           platforms: linux/amd64
 
+      - name: Show API image digest
+        if: steps.build_api.outputs.digest != ''
+        run: echo "API image digest: ${{ steps.build_api.outputs.digest }}"
+
       - name: Build and push worker image
+        id: build_worker
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -70,7 +76,12 @@ jobs:
           tags: ${{ env.REGISTRY }}/keepstack-worker:${{ env.TAG }}
           platforms: linux/amd64
 
+      - name: Show worker image digest
+        if: steps.build_worker.outputs.digest != ''
+        run: echo "Worker image digest: ${{ steps.build_worker.outputs.digest }}"
+
       - name: Build and push web image
+        id: build_web
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -79,5 +90,40 @@ jobs:
           tags: ${{ env.REGISTRY }}/keepstack-web:${{ env.TAG }}
           platforms: linux/amd64
 
+      - name: Show web image digest
+        if: steps.build_web.outputs.digest != ''
+        run: echo "Web image digest: ${{ steps.build_web.outputs.digest }}"
+
       - name: Helm lint
         run: helm lint deploy/charts/keepstack
+
+      - name: Configure kubeconfig
+        if: ${{ secrets.KUBECONFIG != '' }}
+        run: |
+          mkdir -p ~/.kube
+          printf '%s' "${{ secrets.KUBECONFIG }}" > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Deploy to dev cluster
+        if: ${{ secrets.KUBECONFIG != '' }}
+        run: |
+          helm upgrade --install keepstack deploy/charts/keepstack \
+            --namespace keepstack --create-namespace \
+            -f deploy/values/dev.yaml \
+            --set image.registry=${{ env.REGISTRY }} \
+            --set image.tag=${{ env.TAG }}
+
+      - name: Wait for application readiness
+        if: ${{ secrets.KUBECONFIG != '' }}
+        run: |
+          kubectl -n keepstack rollout status deployment/keepstack-api --timeout=5m
+          kubectl -n keepstack rollout status deployment/keepstack-worker --timeout=5m
+          kubectl -n keepstack rollout status deployment/keepstack-web --timeout=5m
+
+      - name: Install just
+        if: ${{ secrets.KUBECONFIG != '' }}
+        run: sudo apt-get update && sudo apt-get install -y just
+
+      - name: Run smoke tests
+        if: ${{ secrets.KUBECONFIG != '' }}
+        run: just smoke
