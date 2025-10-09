@@ -23,7 +23,9 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
             - name: PORT
-              value: "9090"
+              value: {{ .Values.worker.metricsPort | quote }}
+            - name: HEALTH_PORT
+              value: {{ .Values.worker.healthPort | quote }}
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
@@ -36,11 +38,19 @@ spec:
                   key: NATS_URL
           ports:
             - name: metrics
-              containerPort: 9090
+              containerPort: {{ .Values.worker.metricsPort }}
+            - name: health
+              containerPort: {{ .Values.worker.healthPort }}
           readinessProbe:
             httpGet:
-              path: /metrics
-              port: metrics
+              path: /healthz
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: health
             initialDelaySeconds: 5
             periodSeconds: 15
           resources:
@@ -59,5 +69,5 @@ spec:
     app.kubernetes.io/name: {{ include "keepstack.fullname" . }}-worker
   ports:
     - name: metrics
-      port: 9090
+      port: {{ .Values.worker.metricsPort }}
       targetPort: metrics
