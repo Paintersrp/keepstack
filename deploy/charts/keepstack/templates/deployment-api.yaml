@@ -102,8 +102,8 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: {{ include "keepstack.fullname" . }}-api
-  minReplicas: {{ .Values.api.replicas }}
-  maxReplicas: {{ mul .Values.api.replicas 3 | int }}
+  minReplicas: {{ .Values.api.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.api.autoscaling.maxReplicas }}
   metrics:
     - type: Resource
       resource:

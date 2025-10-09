@@ -74,6 +74,10 @@ keepstack/
 
 `just smoke` issues a `GET /api/links?q=example` request against the ingress host. The command succeeds when the response contains at least one link, ensuring the API, worker, Postgres, and ingress are wired together correctly.
 
+### Autoscaling policy
+
+The API deployment includes a Horizontal Pod Autoscaler that keeps at least two replicas running and can scale up to six based on 70% CPU utilization. Override `api.autoscaling.minReplicas` or `api.autoscaling.maxReplicas` in your Helm values to adjust the range for your environment.
+
 ## Developer workflow
 
 - **Local testing**: `just test` (runs API and worker Go tests plus the web production build).
