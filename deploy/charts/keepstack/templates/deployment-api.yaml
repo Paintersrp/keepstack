@@ -46,14 +46,29 @@ spec:
             httpGet:
               path: /livez
               port: http
-            initialDelaySeconds: 10
-            periodSeconds: 15
+            initialDelaySeconds: {{ .Values.api.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.api.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.api.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.api.probes.liveness.failureThreshold }}
+            successThreshold: {{ .Values.api.probes.liveness.successThreshold }}
           readinessProbe:
             httpGet:
               path: /healthz
               port: http
-            initialDelaySeconds: 5
-            periodSeconds: 10
+            initialDelaySeconds: {{ .Values.api.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.api.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.api.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.api.probes.readiness.failureThreshold }}
+            successThreshold: {{ .Values.api.probes.readiness.successThreshold }}
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: {{ .Values.api.probes.startup.initialDelaySeconds }}
+            periodSeconds: {{ .Values.api.probes.startup.periodSeconds }}
+            timeoutSeconds: {{ .Values.api.probes.startup.timeoutSeconds }}
+            failureThreshold: {{ .Values.api.probes.startup.failureThreshold }}
+            successThreshold: {{ .Values.api.probes.startup.successThreshold }}
           resources:
             {{- toYaml .Values.api.resources | nindent 12 }}
 ---

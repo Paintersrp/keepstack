@@ -18,6 +18,25 @@ secrets:
 
 api:
   replicas: 1
+  probes:
+    liveness:
+      initialDelaySeconds: 10
+      periodSeconds: 15
+      timeoutSeconds: 5
+      failureThreshold: 3
+      successThreshold: 1
+    readiness:
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+      successThreshold: 1
+    startup:
+      initialDelaySeconds: 0
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 18
+      successThreshold: 1
   resources:
     requests:
       cpu: 200m
