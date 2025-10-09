@@ -1,5 +1,8 @@
 namespace: keepstack
 
+networkPolicy:
+  kubernetesApiCIDRs: []
+
 image:
   registry: ghcr.io/example
   tag: latest

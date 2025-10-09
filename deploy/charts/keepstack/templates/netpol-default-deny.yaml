@@ -1,0 +1,203 @@
+{{- $fullName := include "keepstack.fullname" . -}}
+{{- $namespace := include "keepstack.namespace" . -}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ printf "%s-default-deny" $fullName }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "keepstack.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ printf "%s-allow-api-ingress-from-web" $fullName }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "keepstack.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ printf "%s-api" $fullName }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ printf "%s-web" $fullName }}
+      ports:
+        - port: http
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ printf "%s-allow-web-egress-to-api" $fullName }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "keepstack.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ printf "%s-web" $fullName }}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ printf "%s-api" $fullName }}
+      ports:
+        - port: http
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ printf "%s-allow-postgres-ingress" $fullName }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "keepstack.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ printf "%s-postgres" $fullName }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ printf "%s-api" $fullName }}
+      ports:
+        - port: postgres
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ printf "%s-worker" $fullName }}
+      ports:
+        - port: postgres
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ printf "%s-allow-api-egress-to-postgres" $fullName }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "keepstack.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ printf "%s-api" $fullName }}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ printf "%s-postgres" $fullName }}
+      ports:
+        - port: postgres
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ printf "%s-allow-worker-egress" $fullName }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "keepstack.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ printf "%s-worker" $fullName }}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ printf "%s-postgres" $fullName }}
+      ports:
+        - port: postgres
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ printf "%s-nats" $fullName }}
+      ports:
+        - port: client
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ printf "%s-allow-nats-ingress-from-worker" $fullName }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "keepstack.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ printf "%s-nats" $fullName }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ printf "%s-worker" $fullName }}
+      ports:
+        - port: client
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ printf "%s-allow-dns" $fullName }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "keepstack.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+{{- if and .Values.networkPolicy .Values.networkPolicy.kubernetesApiCIDRs }}
+{{- $apiCIDRs := .Values.networkPolicy.kubernetesApiCIDRs | compact -}}
+{{- if gt (len $apiCIDRs) 0 }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ printf "%s-allow-apiserver" $fullName }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "keepstack.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+{{- range $cidr := $apiCIDRs }}
+        - ipBlock:
+            cidr: {{ $cidr }}
+{{- end }}
+      ports:
+        - protocol: TCP
+          port: 443
+{{- end }}
+{{- end }}
