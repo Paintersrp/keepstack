@@ -46,26 +46,7 @@ seed:
 	-d '{"url":"https://example.com","title":"Example Domain"}'
 
 smoke:
-        python - <<'PY'
-import json
-import sys
-import urllib.request
-
-base = "http://keepstack.localtest.me:8080"
-req = urllib.request.Request(f"{base}/api/links?q=example")
-try:
-    with urllib.request.urlopen(req, timeout=10) as resp:
-        data = json.loads(resp.read())
-except Exception as exc:
-    print(f"Smoke test failed: {exc}")
-    sys.exit(1)
-
-items = data.get("items", [])
-if not items:
-    print("Smoke test failed: no items returned")
-    sys.exit(1)
-print("Smoke test passed")
-PY
+        {{justfile_directory()}}/scripts/smoke.sh
 
 test:
         (cd apps/api && go test ./...)
