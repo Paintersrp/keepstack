@@ -16,6 +16,22 @@ secrets:
     NATS_URL: "nats://nats:4222"
     JWT_SECRET: "change-me"
 
+migrate:
+  image:
+    repository: keepstack-api
+    tag: ""
+    pullPolicy: ""
+  command:
+    - /app/migrate
+  args: []
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
 api:
   replicas: 1
   probes:
