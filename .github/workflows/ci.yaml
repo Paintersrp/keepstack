@@ -6,7 +6,7 @@ on:
   pull_request:
 
 env:
-  REGISTRY: ghcr.io/${{ github.repository_owner }}
+  REGISTRY: ghcr.io/${{ toLower(github.repository_owner) }}
   TAG: sha-${{ github.sha }}
 
 jobs:
