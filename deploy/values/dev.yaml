@@ -15,6 +15,9 @@ secrets:
 
 api:
   replicas: 2
+  autoscaling:
+    minReplicas: 2
+    maxReplicas: 6
   resources:
     requests:
       cpu: 200m
