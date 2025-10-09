@@ -2,6 +2,8 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	stdhttp "net/http"
 	"net/url"
@@ -10,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
@@ -94,13 +97,33 @@ type createLinkRequest struct {
 }
 
 type linkResponse struct {
-	ID            string     `json:"id"`
-	URL           string     `json:"url"`
-	Title         string     `json:"title"`
-	Favorite      bool       `json:"favorite"`
-	CreatedAt     time.Time  `json:"created_at"`
-	ReadAt        *time.Time `json:"read_at,omitempty"`
-	ExtractedText string     `json:"extracted_text"`
+	ID            string              `json:"id"`
+	URL           string              `json:"url"`
+	Title         string              `json:"title"`
+	SourceDomain  string              `json:"source_domain"`
+	Favorite      bool                `json:"favorite"`
+	CreatedAt     time.Time           `json:"created_at"`
+	ReadAt        *time.Time          `json:"read_at,omitempty"`
+	ArchiveTitle  string              `json:"archive_title"`
+	Byline        string              `json:"byline"`
+	Lang          string              `json:"lang"`
+	WordCount     int                 `json:"word_count"`
+	ExtractedText string              `json:"extracted_text"`
+	Tags          []tagResponse       `json:"tags"`
+	Highlights    []highlightResponse `json:"highlights"`
+}
+
+type tagResponse struct {
+	ID   int32  `json:"id"`
+	Name string `json:"name"`
+}
+
+type highlightResponse struct {
+	ID         string    `json:"id"`
+	Quote      string    `json:"quote"`
+	Annotation *string   `json:"annotation,omitempty"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 type listLinksResponse struct {
@@ -188,12 +211,45 @@ func (s *Server) handleListLinks(c echo.Context) error {
 		queryArg = pgtype.Text{String: queryText, Valid: true}
 	}
 
+	tagsParam := strings.TrimSpace(c.QueryParam("tags"))
+	var tagIDs []int32
+	if tagsParam != "" {
+		seen := make(map[string]struct{})
+		for _, part := range strings.Split(tagsParam, ",") {
+			name := strings.TrimSpace(part)
+			if name == "" {
+				continue
+			}
+			if _, ok := seen[strings.ToLower(name)]; ok {
+				continue
+			}
+			seen[strings.ToLower(name)] = struct{}{}
+
+			tag, err := s.queries.GetTagByName(ctx, name)
+			if err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					s.metrics.LinkListFailure.Inc()
+					return c.JSON(stdhttp.StatusBadRequest, map[string]string{"error": fmt.Sprintf("unknown tag: %s", name)})
+				}
+				s.metrics.LinkListFailure.Inc()
+				return c.JSON(stdhttp.StatusInternalServerError, map[string]string{"error": "failed to resolve tags"})
+			}
+			tagIDs = append(tagIDs, tag.ID)
+		}
+	}
+
+	var tagArg interface{}
+	if len(tagIDs) > 0 {
+		tagArg = tagIDs
+	}
+
 	listParams := db.ListLinksParams{
-		UserID:   uuidToPg(s.cfg.DevUserID),
-		Favorite: favorite,
-		Query:    queryArg,
-		Limit:    int32(limit),
-		Offset:   int32(offset),
+		UserID:     uuidToPg(s.cfg.DevUserID),
+		Favorite:   favorite,
+		Query:      queryArg,
+		TagIds:     tagArg,
+		PageLimit:  int32(limit),
+		PageOffset: int32(offset),
 	}
 
 	items, err := s.queries.ListLinks(ctx, listParams)
@@ -202,11 +258,16 @@ func (s *Server) handleListLinks(c echo.Context) error {
 		return c.JSON(stdhttp.StatusInternalServerError, map[string]string{"error": "failed to fetch links"})
 	}
 
-	count, err := s.queries.CountLinks(ctx, db.CountLinksParams{
+	countParams := db.CountLinksParams{
 		UserID:   uuidToPg(s.cfg.DevUserID),
 		Favorite: favorite,
 		Query:    queryArg,
-	})
+	}
+	if len(tagIDs) > 0 {
+		countParams.TagIds = tagIDs
+	}
+
+	count, err := s.queries.CountLinks(ctx, countParams)
 	if err != nil {
 		s.metrics.LinkListFailure.Inc()
 		return c.JSON(stdhttp.StatusInternalServerError, map[string]string{"error": "failed to count links"})
@@ -214,7 +275,12 @@ func (s *Server) handleListLinks(c echo.Context) error {
 
 	responses := make([]linkResponse, 0, len(items))
 	for _, item := range items {
-		responses = append(responses, toLinkResponse(item))
+		resp, err := toLinkResponse(item)
+		if err != nil {
+			s.metrics.LinkListFailure.Inc()
+			return c.JSON(stdhttp.StatusInternalServerError, map[string]string{"error": "failed to format response"})
+		}
+		responses = append(responses, resp)
 	}
 
 	s.metrics.LinkListSuccess.Inc()
@@ -226,7 +292,7 @@ func (s *Server) handleListLinks(c echo.Context) error {
 	})
 }
 
-func toLinkResponse(row db.ListLinksRow) linkResponse {
+func toLinkResponse(row db.ListLinksRow) (linkResponse, error) {
 	var readAt *time.Time
 	if row.ReadAt.Valid {
 		t := row.ReadAt.Time
@@ -238,15 +304,147 @@ func toLinkResponse(row db.ListLinksRow) linkResponse {
 		title = row.Title.String
 	}
 
+	sourceDomain := ""
+	if row.SourceDomain.Valid {
+		sourceDomain = row.SourceDomain.String
+	}
+
+	tags := mergeTagArrays(row.TagIds, row.TagNames)
+	highlights, err := decodeHighlights(row.Highlights)
+	if err != nil {
+		return linkResponse{}, err
+	}
+
 	return linkResponse{
 		ID:            uuidFromPg(row.ID).String(),
 		URL:           row.Url,
 		Title:         title,
+		SourceDomain:  sourceDomain,
 		Favorite:      row.Favorite,
 		CreatedAt:     row.CreatedAt.Time,
 		ReadAt:        readAt,
+		ArchiveTitle:  row.ArchiveTitle,
+		Byline:        row.ArchiveByline,
+		Lang:          row.Lang,
+		WordCount:     int(row.WordCount),
 		ExtractedText: row.ExtractedText,
+		Tags:          tags,
+		Highlights:    highlights,
+	}, nil
+}
+
+func mergeTagArrays(idsRaw, namesRaw interface{}) []tagResponse {
+	ids := extractInt32Slice(idsRaw)
+	names := extractStringSlice(namesRaw)
+	n := len(ids)
+	if len(names) < n {
+		n = len(names)
 	}
+	if n == 0 {
+		return nil
+	}
+	tags := make([]tagResponse, 0, n)
+	for i := 0; i < n; i++ {
+		tags = append(tags, tagResponse{ID: ids[i], Name: names[i]})
+	}
+	return tags
+}
+
+func extractInt32Slice(value interface{}) []int32 {
+	switch v := value.(type) {
+	case nil:
+		return nil
+	case []int32:
+		return v
+	case []int64:
+		out := make([]int32, len(v))
+		for i, val := range v {
+			out[i] = int32(val)
+		}
+		return out
+	case []interface{}:
+		out := make([]int32, 0, len(v))
+		for _, item := range v {
+			switch vv := item.(type) {
+			case int32:
+				out = append(out, vv)
+			case int64:
+				out = append(out, int32(vv))
+			case float64:
+				out = append(out, int32(vv))
+			}
+		}
+		return out
+	case pgtype.FlatArray[pgtype.Int4]:
+		out := make([]int32, 0, len(v))
+		for _, elem := range v {
+			if elem.Valid {
+				out = append(out, elem.Int32)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func extractStringSlice(value interface{}) []string {
+	switch v := value.(type) {
+	case nil:
+		return nil
+	case []string:
+		return v
+	case []interface{}:
+		out := make([]string, 0, len(v))
+		for _, item := range v {
+			if str, ok := item.(string); ok {
+				out = append(out, str)
+			}
+		}
+		return out
+	case pgtype.FlatArray[pgtype.Text]:
+		out := make([]string, 0, len(v))
+		for _, elem := range v {
+			if elem.Valid {
+				out = append(out, elem.String)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+type highlightPayload struct {
+	ID         string    `json:"id"`
+	Quote      string    `json:"quote"`
+	Annotation *string   `json:"annotation"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+func decodeHighlights(data []byte) ([]highlightResponse, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+	var raw []highlightPayload
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, err
+	}
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	highlights := make([]highlightResponse, 0, len(raw))
+	for _, item := range raw {
+		highlights = append(highlights, highlightResponse{
+			ID:         item.ID,
+			Quote:      item.Quote,
+			Annotation: item.Annotation,
+			CreatedAt:  item.CreatedAt,
+			UpdatedAt:  item.UpdatedAt,
+		})
+	}
+	return highlights, nil
 }
 
 func parsePagination(limitRaw, offsetRaw string) (int, int, error) {

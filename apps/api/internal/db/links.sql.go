@@ -11,6 +11,22 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const addTagToLink = `-- name: AddTagToLink :exec
+INSERT INTO link_tags (link_id, tag_id)
+VALUES ($1, $2)
+ON CONFLICT DO NOTHING
+`
+
+type AddTagToLinkParams struct {
+	LinkID pgtype.UUID
+	TagID  int32
+}
+
+func (q *Queries) AddTagToLink(ctx context.Context, arg AddTagToLinkParams) error {
+	_, err := q.db.Exec(ctx, addTagToLink, arg.LinkID, arg.TagID)
+	return err
+}
+
 const countLinks = `-- name: CountLinks :one
 SELECT COUNT(*)
 FROM links l
@@ -23,19 +39,80 @@ WHERE l.user_id = $1
     OR l.search_tsv @@ plainto_tsquery('english', $3)
     OR l.url ILIKE '%' || $3 || '%'
   )
+  AND (
+    $4 IS NULL
+    OR NOT EXISTS (
+        SELECT 1
+        FROM unnest($4::int4[]) AS tag_id
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM link_tags lt
+            WHERE lt.link_id = l.id
+              AND lt.tag_id = tag_id
+        )
+    )
+  )
 `
 
 type CountLinksParams struct {
 	UserID   pgtype.UUID
 	Favorite interface{}
 	Query    interface{}
+	TagIds   interface{}
 }
 
 func (q *Queries) CountLinks(ctx context.Context, arg CountLinksParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countLinks, arg.UserID, arg.Favorite, arg.Query)
+	row := q.db.QueryRow(ctx, countLinks,
+		arg.UserID,
+		arg.Favorite,
+		arg.Query,
+		arg.TagIds,
+	)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
+}
+
+const createHighlight = `-- name: CreateHighlight :one
+INSERT INTO highlights (
+    id,
+    link_id,
+    quote,
+    annotation
+)
+VALUES (
+    COALESCE($1, gen_random_uuid()),
+    $2,
+    $3,
+    $4
+)
+RETURNING id, link_id, quote, annotation, created_at, updated_at
+`
+
+type CreateHighlightParams struct {
+	ID         interface{}
+	LinkID     pgtype.UUID
+	Quote      string
+	Annotation pgtype.Text
+}
+
+func (q *Queries) CreateHighlight(ctx context.Context, arg CreateHighlightParams) (Highlight, error) {
+	row := q.db.QueryRow(ctx, createHighlight,
+		arg.ID,
+		arg.LinkID,
+		arg.Quote,
+		arg.Annotation,
+	)
+	var i Highlight
+	err := row.Scan(
+		&i.ID,
+		&i.LinkID,
+		&i.Quote,
+		&i.Annotation,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const createLink = `-- name: CreateLink :one
@@ -94,6 +171,39 @@ func (q *Queries) CreateLink(ctx context.Context, arg CreateLinkParams) (CreateL
 	return i, err
 }
 
+const createTag = `-- name: CreateTag :one
+INSERT INTO tags (name)
+VALUES ($1)
+RETURNING id, name
+`
+
+func (q *Queries) CreateTag(ctx context.Context, name string) (Tag, error) {
+	row := q.db.QueryRow(ctx, createTag, name)
+	var i Tag
+	err := row.Scan(&i.ID, &i.Name)
+	return i, err
+}
+
+const deleteHighlight = `-- name: DeleteHighlight :exec
+DELETE FROM highlights
+WHERE id = $1
+`
+
+func (q *Queries) DeleteHighlight(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deleteHighlight, id)
+	return err
+}
+
+const deleteTag = `-- name: DeleteTag :exec
+DELETE FROM tags
+WHERE id = $1
+`
+
+func (q *Queries) DeleteTag(ctx context.Context, id int32) error {
+	_, err := q.db.Exec(ctx, deleteTag, id)
+	return err
+}
+
 const getLink = `-- name: GetLink :one
 SELECT l.id,
        l.user_id,
@@ -131,17 +241,107 @@ func (q *Queries) GetLink(ctx context.Context, id pgtype.UUID) (GetLinkRow, erro
 	return i, err
 }
 
+const getTag = `-- name: GetTag :one
+SELECT id, name
+FROM tags
+WHERE id = $1
+`
+
+func (q *Queries) GetTag(ctx context.Context, id int32) (Tag, error) {
+	row := q.db.QueryRow(ctx, getTag, id)
+	var i Tag
+	err := row.Scan(&i.ID, &i.Name)
+	return i, err
+}
+
+const getTagByName = `-- name: GetTagByName :one
+SELECT id, name
+FROM tags
+WHERE name = $1
+`
+
+func (q *Queries) GetTagByName(ctx context.Context, name string) (Tag, error) {
+	row := q.db.QueryRow(ctx, getTagByName, name)
+	var i Tag
+	err := row.Scan(&i.ID, &i.Name)
+	return i, err
+}
+
+const listHighlightsByLink = `-- name: ListHighlightsByLink :many
+SELECT id, link_id, quote, annotation, created_at, updated_at
+FROM highlights
+WHERE link_id = $1
+ORDER BY created_at DESC
+`
+
+func (q *Queries) ListHighlightsByLink(ctx context.Context, linkID pgtype.UUID) ([]Highlight, error) {
+	rows, err := q.db.Query(ctx, listHighlightsByLink, linkID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Highlight
+	for rows.Next() {
+		var i Highlight
+		if err := rows.Scan(
+			&i.ID,
+			&i.LinkID,
+			&i.Quote,
+			&i.Annotation,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listLinks = `-- name: ListLinks :many
 SELECT l.id,
        l.user_id,
        l.url,
        l.title,
+       l.source_domain,
        l.created_at,
        l.read_at,
        l.favorite,
-       COALESCE(a.extracted_text, '') AS extracted_text
+       COALESCE(a.title, '') AS archive_title,
+       COALESCE(a.byline, '') AS archive_byline,
+       COALESCE(a.lang, '') AS lang,
+       COALESCE(a.word_count, 0) AS word_count,
+       COALESCE(a.extracted_text, '') AS extracted_text,
+       COALESCE(tag_data.tag_ids, ARRAY[]::INTEGER[]) AS tag_ids,
+       COALESCE(tag_data.tag_names, ARRAY[]::TEXT[]) AS tag_names,
+       COALESCE(highlight_data.highlights, '[]'::JSON) AS highlights
 FROM links l
 LEFT JOIN archives a ON a.link_id = l.id
+LEFT JOIN LATERAL (
+    SELECT ARRAY_AGG(t.id ORDER BY t.name) AS tag_ids,
+           ARRAY_AGG(t.name ORDER BY t.name) AS tag_names
+    FROM link_tags lt
+    JOIN tags t ON t.id = lt.tag_id
+    WHERE lt.link_id = l.id
+) AS tag_data ON TRUE
+LEFT JOIN LATERAL (
+    SELECT json_agg(
+               json_build_object(
+                   'id', h.id,
+                   'link_id', h.link_id,
+                   'quote', h.quote,
+                   'annotation', h.annotation,
+                   'created_at', h.created_at,
+                   'updated_at', h.updated_at
+               )
+               ORDER BY h.created_at DESC
+           ) AS highlights
+    FROM highlights h
+    WHERE h.link_id = l.id
+) AS highlight_data ON TRUE
 WHERE l.user_id = $1
   AND (
     $2 IS NULL OR l.favorite = $2
@@ -151,17 +351,31 @@ WHERE l.user_id = $1
     OR l.search_tsv @@ plainto_tsquery('english', $3)
     OR l.url ILIKE '%' || $3 || '%'
   )
+  AND (
+    $4 IS NULL
+    OR NOT EXISTS (
+        SELECT 1
+        FROM unnest($4::int4[]) AS tag_id
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM link_tags lt
+            WHERE lt.link_id = l.id
+              AND lt.tag_id = tag_id
+        )
+    )
+  )
 ORDER BY l.created_at DESC
-LIMIT $5
-OFFSET $4
+LIMIT $6
+OFFSET $5
 `
 
 type ListLinksParams struct {
-	UserID   pgtype.UUID
-	Favorite interface{}
-	Query    interface{}
-	Offset   int32
-	Limit    int32
+	UserID     pgtype.UUID
+	Favorite   interface{}
+	Query      interface{}
+	TagIds     interface{}
+	PageOffset int32
+	PageLimit  int32
 }
 
 type ListLinksRow struct {
@@ -169,10 +383,18 @@ type ListLinksRow struct {
 	UserID        pgtype.UUID
 	Url           string
 	Title         pgtype.Text
+	SourceDomain  pgtype.Text
 	CreatedAt     pgtype.Timestamptz
 	ReadAt        pgtype.Timestamptz
 	Favorite      bool
+	ArchiveTitle  string
+	ArchiveByline string
+	Lang          string
+	WordCount     int32
 	ExtractedText string
+	TagIds        interface{}
+	TagNames      interface{}
+	Highlights    []byte
 }
 
 func (q *Queries) ListLinks(ctx context.Context, arg ListLinksParams) ([]ListLinksRow, error) {
@@ -180,8 +402,9 @@ func (q *Queries) ListLinks(ctx context.Context, arg ListLinksParams) ([]ListLin
 		arg.UserID,
 		arg.Favorite,
 		arg.Query,
-		arg.Offset,
-		arg.Limit,
+		arg.TagIds,
+		arg.PageOffset,
+		arg.PageLimit,
 	)
 	if err != nil {
 		return nil, err
@@ -195,10 +418,18 @@ func (q *Queries) ListLinks(ctx context.Context, arg ListLinksParams) ([]ListLin
 			&i.UserID,
 			&i.Url,
 			&i.Title,
+			&i.SourceDomain,
 			&i.CreatedAt,
 			&i.ReadAt,
 			&i.Favorite,
+			&i.ArchiveTitle,
+			&i.ArchiveByline,
+			&i.Lang,
+			&i.WordCount,
 			&i.ExtractedText,
+			&i.TagIds,
+			&i.TagNames,
+			&i.Highlights,
 		); err != nil {
 			return nil, err
 		}
@@ -208,6 +439,121 @@ func (q *Queries) ListLinks(ctx context.Context, arg ListLinksParams) ([]ListLin
 		return nil, err
 	}
 	return items, nil
+}
+
+const listTags = `-- name: ListTags :many
+SELECT id, name
+FROM tags
+ORDER BY name
+`
+
+func (q *Queries) ListTags(ctx context.Context) ([]Tag, error) {
+	rows, err := q.db.Query(ctx, listTags)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Tag
+	for rows.Next() {
+		var i Tag
+		if err := rows.Scan(&i.ID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTagsForLink = `-- name: ListTagsForLink :many
+SELECT t.id, t.name
+FROM tags t
+JOIN link_tags lt ON lt.tag_id = t.id
+WHERE lt.link_id = $1
+ORDER BY t.name
+`
+
+func (q *Queries) ListTagsForLink(ctx context.Context, linkID pgtype.UUID) ([]Tag, error) {
+	rows, err := q.db.Query(ctx, listTagsForLink, linkID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Tag
+	for rows.Next() {
+		var i Tag
+		if err := rows.Scan(&i.ID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const removeTagFromLink = `-- name: RemoveTagFromLink :exec
+DELETE FROM link_tags
+WHERE link_id = $1
+  AND tag_id = $2
+`
+
+type RemoveTagFromLinkParams struct {
+	LinkID pgtype.UUID
+	TagID  int32
+}
+
+func (q *Queries) RemoveTagFromLink(ctx context.Context, arg RemoveTagFromLinkParams) error {
+	_, err := q.db.Exec(ctx, removeTagFromLink, arg.LinkID, arg.TagID)
+	return err
+}
+
+const updateHighlight = `-- name: UpdateHighlight :one
+UPDATE highlights
+SET quote = $1,
+    annotation = $2,
+    updated_at = NOW()
+WHERE id = $3
+RETURNING id, link_id, quote, annotation, created_at, updated_at
+`
+
+type UpdateHighlightParams struct {
+	Quote      string
+	Annotation pgtype.Text
+	ID         pgtype.UUID
+}
+
+func (q *Queries) UpdateHighlight(ctx context.Context, arg UpdateHighlightParams) (Highlight, error) {
+	row := q.db.QueryRow(ctx, updateHighlight, arg.Quote, arg.Annotation, arg.ID)
+	var i Highlight
+	err := row.Scan(
+		&i.ID,
+		&i.LinkID,
+		&i.Quote,
+		&i.Annotation,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateLinkSourceDomain = `-- name: UpdateLinkSourceDomain :exec
+UPDATE links
+SET source_domain = $1
+WHERE id = $2
+`
+
+type UpdateLinkSourceDomainParams struct {
+	SourceDomain pgtype.Text
+	ID           pgtype.UUID
+}
+
+func (q *Queries) UpdateLinkSourceDomain(ctx context.Context, arg UpdateLinkSourceDomainParams) error {
+	_, err := q.db.Exec(ctx, updateLinkSourceDomain, arg.SourceDomain, arg.ID)
+	return err
 }
 
 const updateLinkTitle = `-- name: UpdateLinkTitle :exec
@@ -232,19 +578,25 @@ INSERT INTO archives (
     html,
     extracted_text,
     word_count,
-    lang
+    lang,
+    title,
+    byline
 ) VALUES (
     $1,
     $2,
     $3,
     $4,
-    $5
+    $5,
+    $6,
+    $7
 )
 ON CONFLICT (link_id) DO UPDATE
 SET html = EXCLUDED.html,
     extracted_text = EXCLUDED.extracted_text,
     word_count = EXCLUDED.word_count,
-    lang = EXCLUDED.lang
+    lang = EXCLUDED.lang,
+    title = EXCLUDED.title,
+    byline = EXCLUDED.byline
 `
 
 type UpsertArchiveParams struct {
@@ -253,6 +605,8 @@ type UpsertArchiveParams struct {
 	ExtractedText pgtype.Text
 	WordCount     pgtype.Int4
 	Lang          pgtype.Text
+	Title         pgtype.Text
+	Byline        pgtype.Text
 }
 
 func (q *Queries) UpsertArchive(ctx context.Context, arg UpsertArchiveParams) error {
@@ -262,6 +616,8 @@ func (q *Queries) UpsertArchive(ctx context.Context, arg UpsertArchiveParams) er
 		arg.ExtractedText,
 		arg.WordCount,
 		arg.Lang,
+		arg.Title,
+		arg.Byline,
 	)
 	return err
 }
