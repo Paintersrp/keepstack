@@ -74,6 +74,28 @@ keepstack/
 
 `just smoke` issues a `GET /api/links?q=example` request against the ingress host. The command succeeds when the response contains at least one link, ensuring the API, worker, Postgres, and ingress are wired together correctly.
 
+## Verify v0.1
+
+Run the workflow below to exercise the full v0.1 deployment path from cluster bootstrap through smoke testing. It bootstraps a local k3d cluster with ingress-nginx, provisions the shared application secret, deploys the Helm chart, waits for the core workloads to become available, and finally executes the smoke test against the ingress endpoint.
+
+```sh
+just dev-up
+kubectl create ns keepstack || true
+kubectl -n keepstack create secret generic keepstack-secrets \
+  --from-literal=DATABASE_URL='postgres://keepstack:keepstack@postgres:5432/keepstack?sslmode=disable' \
+  --from-literal=NATS_URL='nats://nats:4222' \
+  --from-literal=JWT_SECRET='devdevdevdevdevdevdevdevdevdevdevdev' || true
+just build
+just push
+just helm-dev
+kubectl -n keepstack wait --for=condition=Available deploy/keepstack-api --timeout=120s
+kubectl -n keepstack wait --for=condition=Available deploy/keepstack-worker --timeout=120s
+kubectl -n keepstack wait --for=condition=Available deploy/keepstack-web --timeout=120s
+just smoke
+```
+
+The wait commands confirm that each deployment reports an `Available` status before the smoke test runs. If any wait operation times out, inspect the relevant pod logs (for example, `kubectl -n keepstack logs deploy/keepstack-api`) before re-running the workflow.
+
 ### Autoscaling policy
 
 The API deployment includes a Horizontal Pod Autoscaler that keeps at least two replicas running and can scale up to six based on 70% CPU utilization. Override `api.autoscaling.minReplicas` or `api.autoscaling.maxReplicas` in your Helm values to adjust the range for your environment.
@@ -83,6 +105,14 @@ The API deployment includes a Horizontal Pod Autoscaler that keeps at least two 
 - **Local testing**: `just test` (runs API and worker Go tests plus the web production build).
 - **Image builds**: `just build` creates linux/amd64 images tagged with `sha-<short commit>`.
 - **CI**: GitHub Actions runs Go tests, web builds, Docker image pushes to GHCR, and `helm lint` on every PR and main push.
+
+### Smoke test script usage & troubleshooting
+
+- **Basic usage**: Run `./scripts/smoke.sh` (or `just smoke`) once the Helm release is ready. Override defaults such as `SMOKE_BASE_URL`, `SMOKE_POST_TIMEOUT`, or `SMOKE_POLL_TIMEOUT` to target alternative ingress URLs or tune slow environments.
+- **Ingress routing failures**: If the script reports connection or DNS errors, confirm the ingress controller is ready with `kubectl -n ingress-nginx get pods` and that `/etc/hosts` (or your DNS) resolves `keepstack.localtest.me`.
+- **Pending database migrations**: A `201` POST followed by repeated polling without the link appearing usually indicates the worker cannot finish migrations. Check the Postgres pod logs (`kubectl -n keepstack logs statefulset/keepstack-postgres`) and re-run `helm-dev` after resolving schema issues.
+- **API readiness**: HTTP `5xx` responses or cURL timeouts imply the API deployment is still starting. Verify readiness with `kubectl -n keepstack get deploy keepstack-api` and inspect logs via `just logs`.
+- **Tear down**: Clean up the development environment with `just dev-down` after smoke testing to delete the k3d cluster.
 
 ## v0.1 Scope & Definition of Done
 
