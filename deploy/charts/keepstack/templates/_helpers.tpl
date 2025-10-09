@@ -19,3 +19,7 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- $pullPolicy := .Values.image.pullPolicy -}}
 {{- dict "registry" $registry "tag" $tag "pullPolicy" $pullPolicy -}}
 {{- end -}}
+
+{{- define "keepstack.migrate.fullname" -}}
+{{- printf "%s-migrate" (include "keepstack.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
