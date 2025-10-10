@@ -34,8 +34,20 @@ keepstack/
    kubectl -n keepstack create secret generic keepstack-secrets \
      --from-literal=DATABASE_URL='postgres://keepstack:keepstack@postgres:5432/keepstack?sslmode=disable' \
      --from-literal=NATS_URL='nats://nats:4222' \
-     --from-literal=JWT_SECRET='devdevdevdevdevdevdevdevdevdevdevdev' || true
+     --from-literal=JWT_SECRET='devdevdevdevdevdevdevdevdevdevdevdev' \
+     --from-literal=SMTP_HOST='smtp.keepstack.local' \
+     --from-literal=SMTP_PORT='587' \
+     --from-literal=SMTP_USERNAME='keepstack' \
+     --from-literal=SMTP_PASSWORD='changeme' \
+     --from-literal=DIGEST_SENDER='Keepstack Digest <digest@keepstack.local>' \
+     --from-literal=DIGEST_RECIPIENT='reader@keepstack.local' \
+   --from-literal=DIGEST_LIMIT='10' || true
    ```
+
+   The `deploy/values/dev.yaml` file enables a scheduled digest CronJob. Adjust
+   `digest.schedule`, `digest.limit`, `digest.sender`, and `digest.recipient`
+   to control when emails are sent, how many unread links they include, and
+   where they are delivered.
 
 3. **Build and push images** (override `REGISTRY` if you own another registry)
 
@@ -84,7 +96,14 @@ kubectl create ns keepstack || true
 kubectl -n keepstack create secret generic keepstack-secrets \
   --from-literal=DATABASE_URL='postgres://keepstack:keepstack@postgres:5432/keepstack?sslmode=disable' \
   --from-literal=NATS_URL='nats://nats:4222' \
-  --from-literal=JWT_SECRET='devdevdevdevdevdevdevdevdevdevdevdev' || true
+  --from-literal=JWT_SECRET='devdevdevdevdevdevdevdevdevdevdevdev' \
+  --from-literal=SMTP_HOST='smtp.keepstack.local' \
+  --from-literal=SMTP_PORT='587' \
+  --from-literal=SMTP_USERNAME='keepstack' \
+  --from-literal=SMTP_PASSWORD='changeme' \
+  --from-literal=DIGEST_SENDER='Keepstack Digest <digest@keepstack.local>' \
+  --from-literal=DIGEST_RECIPIENT='reader@keepstack.local' \
+  --from-literal=DIGEST_LIMIT='10' || true
 just build
 just push
 just helm-dev
