@@ -4,6 +4,51 @@ Keepstack is a self-hosted reading queue and web archiver designed for homelab a
 
 Built with Go, React, Postgres, NATS, and Kubernetes, Keepstack v0.1 focuses on delivering an end-to-end slice that is easy to run locally or on lightweight clusters such as k3d. Future releases will layer in richer user management, browser automation, and deeper archive controls.
 
+## v0.2 Features
+
+<table>
+  <tr>
+    <td width="50%">
+
+![Tag chips mockup](docs/assets/v0.2-tags.svg)
+
+### Link tagging
+
+Organize long-running reading queues with reusable tag chips. Tags can be created on the fly, re-applied to any archive, and queried from the API or web UI to generate topic-specific filters.
+
+    </td>
+    <td width="50%">
+
+![Highlights mockup](docs/assets/v0.2-highlights.svg)
+
+### Highlights & annotations
+
+Capture notable excerpts, jot down context for teammates, and surface highlights alongside search results to accelerate future research.
+
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+
+![Parser pipeline illustration](docs/assets/v0.2-parser.svg)
+
+### Improved parsing
+
+The worker normalizes noisy HTML, strips boilerplate, and stores structured metadata so full-text search returns cleaner, more relevant matches.
+
+    </td>
+    <td width="50%">
+
+![Digest workflow timeline](docs/assets/v0.2-digest.svg)
+
+### Digest workflow
+
+Schedule automated recap emails summarizing unread items. The CronJob renders a templated digest and hands it off to your SMTP provider so teams stay current without visiting the dashboard.
+
+    </td>
+  </tr>
+</table>
+
 ## Repository layout
 
 ```
@@ -42,12 +87,35 @@ keepstack/
      --from-literal=DIGEST_SENDER='Keepstack Digest <digest@keepstack.local>' \
      --from-literal=DIGEST_RECIPIENT='reader@keepstack.local' \
    --from-literal=DIGEST_LIMIT='10' || true
-   ```
+ ```
 
    The `deploy/values/dev.yaml` file enables a scheduled digest CronJob. Adjust
    `digest.schedule`, `digest.limit`, `digest.sender`, and `digest.recipient`
    to control when emails are sent, how many unread links they include, and
    where they are delivered.
+
+### Enabling the scheduled digest
+
+The digest CronJob is disabled in the chart defaults so production clusters can
+opt in explicitly. Provide SMTP credentials via `keepstack-secrets` and enable
+the job with Helm overrides:
+
+```sh
+helm upgrade --install keepstack deploy/charts/keepstack \
+  --namespace keepstack \
+  --values deploy/values/dev.yaml \
+  --set digest.enabled=true \
+  --set digest.schedule="0 13 * * 1-5" \
+  --set digest.limit=15 \
+  --set digest.sender="Keepstack Digest <digest@example.com>" \
+  --set digest.recipient="team@example.com"
+```
+
+Override `digest.schedule` to change when the CronJob fires, update
+`digest.limit` to cap the number of unread links, and set sender/recipient
+addresses that match your SMTP provider. The CronJob uses the shared secrets
+(`DIGEST_SENDER`, `DIGEST_RECIPIENT`, `DIGEST_LIMIT`) if you prefer to keep
+values out of Helm overrides.
 
 3. **Build and push images** (override `REGISTRY` if you own another registry)
 
@@ -84,7 +152,7 @@ keepstack/
 
 ### Smoke test expectations
 
-`just smoke` issues a `GET /api/links?q=example` request against the ingress host. The command succeeds when the response contains at least one link, ensuring the API, worker, Postgres, and ingress are wired together correctly.
+`just smoke` now performs an end-to-end workflow: it creates a link, waits for the worker to archive it, ensures tag creation/assignment works, and verifies highlights are persisted alongside search responses. The run passes when the tagged link and highlight appear in API results, confirming the API, worker, Postgres, and ingress are all wired together.
 
 ## Verify v0.1
 
