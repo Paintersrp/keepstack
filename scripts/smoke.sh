@@ -35,31 +35,46 @@ GET_TIMEOUT="${SMOKE_GET_TIMEOUT:-10}"
 POLL_INTERVAL="${SMOKE_POLL_INTERVAL:-2}"
 POLL_TIMEOUT="${SMOKE_POLL_TIMEOUT:-60}"
 
+perform_request() {
+  local output="$1"
+  shift
+
+  set +e
+  local status
+  status=$(curl -sS -o "$output" -w '%{http_code}' "$@")
+  local exit_code=$?
+  set -e
+
+  if [[ $exit_code -ne 0 ]]; then
+    log_error "Request failed" "exit=${exit_code}"
+    if [[ -s "$output" ]]; then
+      cat "$output" >&2
+    fi
+    exit 1
+  fi
+
+  printf '%s' "$status"
+}
+
 slug=$(printf 'smoke-%s-%s' "$(date +%s)" "$RANDOM")
 LINK_URL="${SMOKE_LINK_URL:-https://example.com/${slug}}"
 LINK_TITLE="${SMOKE_LINK_TITLE:-Smoke Test ${slug}}"
 QUERY="${SMOKE_QUERY:-${slug}}"
+TAG_NAME="${SMOKE_TAG_NAME:-Smoke Tag ${slug}}"
+HIGHLIGHT_QUOTE="${SMOKE_HIGHLIGHT_QUOTE:-Smoke highlight ${slug}}"
+HIGHLIGHT_ANNOTATION="${SMOKE_HIGHLIGHT_ANNOTATION:-Smoke annotation ${slug}}"
 
 log_info "Starting smoke test" "base=${BASE_URL}" "post=${POST_PATH}" "get=${GET_PATH}" "query=${QUERY}"
 
 post_tmp=$(mktemp)
 cleanup_files+=("$post_tmp")
-post_body=$(printf '{"url":"%s","title":"%s"}' "$LINK_URL" "$LINK_TITLE")
+post_body=$(jq -n --arg url "$LINK_URL" --arg title "$LINK_TITLE" '{url: $url, title: $title}')
 
-set +e
-post_status=$(curl -sS -o "$post_tmp" -w '%{http_code}' \
+post_status=$(perform_request "$post_tmp" \
   --max-time "$POST_TIMEOUT" \
   -H 'Content-Type: application/json' \
   -X POST "$BASE_URL$POST_PATH" \
   -d "$post_body")
-post_exit=$?
-set -e
-
-if [[ $post_exit -ne 0 ]]; then
-  log_error "POST request failed" "exit=${post_exit}"
-  [[ -s "$post_tmp" ]] && cat "$post_tmp" >&2
-  exit 1
-fi
 
 if [[ "$post_status" != "201" ]]; then
   log_error "Unexpected POST response" "status=${post_status}"
@@ -67,37 +82,40 @@ if [[ "$post_status" != "201" ]]; then
   exit 1
 fi
 
-log_info "POST succeeded" "status=${post_status}" "url=${LINK_URL}"
+link_id=$(jq -r '.id // empty' "$post_tmp" 2>/dev/null || true)
+if [[ -z "$link_id" ]]; then
+  log_error "POST response missing link id"
+  [[ -s "$post_tmp" ]] && cat "$post_tmp" >&2
+  exit 1
+fi
+
+log_info "POST succeeded" "status=${post_status}" "url=${LINK_URL}" "id=${link_id}"
 
 deadline=$((SECONDS + POLL_TIMEOUT))
 attempt=1
+link_found=false
 while (( SECONDS <= deadline )); do
   remaining=$((deadline - SECONDS))
   log_info "Polling" "attempt=${attempt}" "remaining=${remaining}s"
   get_tmp=$(mktemp)
   cleanup_files+=("$get_tmp")
 
-  set +e
-  get_status=$(curl -sS -o "$get_tmp" -w '%{http_code}' \
+  get_status=$(perform_request "$get_tmp" \
     --max-time "$GET_TIMEOUT" \
     -G "$BASE_URL$GET_PATH" \
     --data-urlencode "q=${QUERY}" \
     --data-urlencode 'limit=5')
-  get_exit=$?
-  set -e
-
-  if [[ $get_exit -ne 0 ]]; then
-    log_error "GET request failed" "exit=${get_exit}"
-    [[ -s "$get_tmp" ]] && cat "$get_tmp" >&2
-    exit 1
-  fi
 
   if [[ "$get_status" != "200" ]]; then
     log_info "GET returned non-200" "status=${get_status}"
+    if [[ -s "$get_tmp" ]]; then
+      cat "$get_tmp" >&2
+    fi
   else
     if grep -q "$slug" "$get_tmp"; then
-      log_info "Smoke test passed" "attempt=${attempt}"
-      exit 0
+      log_info "Link visible" "attempt=${attempt}"
+      link_found=true
+      break
     fi
     log_info "Link not visible yet"
   fi
@@ -110,7 +128,134 @@ while (( SECONDS <= deadline )); do
   ((attempt++))
 done
 
-log_error "Smoke test timed out" "query=${QUERY}"
-last_body=$(cat "$get_tmp")
-log_error "Last response" "$last_body"
-exit 1
+if [[ "$link_found" != "true" ]]; then
+  log_error "Smoke test timed out" "query=${QUERY}"
+  if [[ -n "${get_tmp:-}" && -s "$get_tmp" ]]; then
+    cat "$get_tmp" >&2
+  fi
+  exit 1
+fi
+
+tag_tmp=$(mktemp)
+cleanup_files+=("$tag_tmp")
+tag_body=$(jq -n --arg name "$TAG_NAME" '{name: $name}')
+
+tag_status=$(perform_request "$tag_tmp" \
+  --max-time "$POST_TIMEOUT" \
+  -H 'Content-Type: application/json' \
+  -X POST "$BASE_URL/api/tags" \
+  -d "$tag_body")
+
+if [[ "$tag_status" != "201" && "$tag_status" != "200" ]]; then
+  log_error "Unexpected tag response" "status=${tag_status}"
+  if [[ -s "$tag_tmp" ]]; then
+    cat "$tag_tmp" >&2
+  fi
+  exit 1
+fi
+
+log_info "Tag ensured" "name=${TAG_NAME}" "status=${tag_status}"
+
+assign_tmp=$(mktemp)
+cleanup_files+=("$assign_tmp")
+
+assign_status=$(perform_request "$assign_tmp" \
+  --max-time "$POST_TIMEOUT" \
+  -H 'Content-Type: application/json' \
+  -X POST "$BASE_URL/api/links/${link_id}/tags" \
+  -d "$tag_body")
+
+if [[ "$assign_status" != "201" ]]; then
+  log_error "Unexpected tag assignment response" "status=${assign_status}"
+  if [[ -s "$assign_tmp" ]]; then
+    cat "$assign_tmp" >&2
+  fi
+  exit 1
+fi
+
+log_info "Tag assigned" "link=${link_id}" "tag=${TAG_NAME}"
+
+tag_query_tmp=$(mktemp)
+cleanup_files+=("$tag_query_tmp")
+
+tag_query_status=$(perform_request "$tag_query_tmp" \
+  --max-time "$GET_TIMEOUT" \
+  -G "$BASE_URL$GET_PATH" \
+  --data-urlencode "tags=${TAG_NAME}" \
+  --data-urlencode 'limit=5')
+
+if [[ "$tag_query_status" != "200" ]]; then
+  log_error "Tag-filtered GET failed" "status=${tag_query_status}"
+  if [[ -s "$tag_query_tmp" ]]; then
+    cat "$tag_query_tmp" >&2
+  fi
+  exit 1
+fi
+
+if ! jq -e --arg id "$link_id" '.items[] | select(.id == $id)' "$tag_query_tmp" >/dev/null 2>&1; then
+  log_error "Tag-filtered GET missing link" "link=${link_id}"
+  if [[ -s "$tag_query_tmp" ]]; then
+    cat "$tag_query_tmp" >&2
+  fi
+  exit 1
+fi
+
+log_info "Tag-filtered query succeeded" "tag=${TAG_NAME}"
+
+highlight_tmp=$(mktemp)
+cleanup_files+=("$highlight_tmp")
+highlight_body=$(jq -n --arg quote "$HIGHLIGHT_QUOTE" --arg annotation "$HIGHLIGHT_ANNOTATION" '{quote: $quote, annotation: $annotation}')
+
+highlight_status=$(perform_request "$highlight_tmp" \
+  --max-time "$POST_TIMEOUT" \
+  -H 'Content-Type: application/json' \
+  -X POST "$BASE_URL/api/links/${link_id}/highlights" \
+  -d "$highlight_body")
+
+if [[ "$highlight_status" != "201" ]]; then
+  log_error "Unexpected highlight response" "status=${highlight_status}"
+  if [[ -s "$highlight_tmp" ]]; then
+    cat "$highlight_tmp" >&2
+  fi
+  exit 1
+fi
+
+highlight_id=$(jq -r '.id // empty' "$highlight_tmp" 2>/dev/null || true)
+if [[ -z "$highlight_id" ]]; then
+  log_error "Highlight response missing id"
+  if [[ -s "$highlight_tmp" ]]; then
+    cat "$highlight_tmp" >&2
+  fi
+  exit 1
+fi
+
+log_info "Highlight created" "id=${highlight_id}"
+
+highlight_check_tmp=$(mktemp)
+cleanup_files+=("$highlight_check_tmp")
+
+highlight_check_status=$(perform_request "$highlight_check_tmp" \
+  --max-time "$GET_TIMEOUT" \
+  -G "$BASE_URL$GET_PATH" \
+  --data-urlencode "q=${QUERY}" \
+  --data-urlencode 'limit=5')
+
+if [[ "$highlight_check_status" != "200" ]]; then
+  log_error "Highlight verification GET failed" "status=${highlight_check_status}"
+  if [[ -s "$highlight_check_tmp" ]]; then
+    cat "$highlight_check_tmp" >&2
+  fi
+  exit 1
+fi
+
+if ! jq -e --arg id "$link_id" --arg quote "$HIGHLIGHT_QUOTE" \
+  '.items[] | select(.id == $id) | .highlights[] | select(.quote == $quote)' \
+  "$highlight_check_tmp" >/dev/null 2>&1; then
+  log_error "Highlight not present in query results" "link=${link_id}" "quote=${HIGHLIGHT_QUOTE}"
+  if [[ -s "$highlight_check_tmp" ]]; then
+    cat "$highlight_check_tmp" >&2
+  fi
+  exit 1
+fi
+
+log_info "Smoke test completed successfully"
