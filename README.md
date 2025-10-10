@@ -199,6 +199,7 @@ The API deployment includes a Horizontal Pod Autoscaler that keeps at least two 
 - **Ingress routing failures**: If the script reports connection or DNS errors, confirm the ingress controller is ready with `kubectl -n ingress-nginx get pods` and that `/etc/hosts` (or your DNS) resolves `keepstack.localtest.me`.
 - **Pending database migrations**: A `201` POST followed by repeated polling without the link appearing usually indicates the worker cannot finish migrations. Check the Postgres pod logs (`kubectl -n keepstack logs statefulset/keepstack-postgres`) and re-run `helm-dev` after resolving schema issues.
 - **API readiness**: HTTP `5xx` responses or cURL timeouts imply the API deployment is still starting. Verify readiness with `kubectl -n keepstack get deploy keepstack-api` and inspect logs via `just logs`.
+- **Link publish failures**: Persistent HTTP `5xx` errors when posting new links can indicate the API pods cannot reach NATS. Confirm the `keepstack-allow-api-to-nats` NetworkPolicy is installed and that the NATS StatefulSet is healthy with `kubectl -n keepstack get statefulset keepstack-nats`.
 - **Tear down**: Clean up the development environment with `just dev-down` after smoke testing to delete the k3d cluster.
 
 ## v0.1 Scope & Definition of Done
