@@ -14,14 +14,13 @@ type Metrics struct {
 	PersistLatency    prometheus.Histogram
 	ParseFailures     prometheus.Counter
 	LangDetectLatency prometheus.Histogram
-	LangDetectSuccess *prometheus.CounterVec
-	LangDetectFailure prometheus.Counter
+	LangDetect        *prometheus.CounterVec
+	LangDetectErrors  prometheus.Counter
 }
 
 // NewMetrics registers worker metrics.
 func NewMetrics() *Metrics {
 	const namespace = "keepstack_worker"
-	const langNamespace = "keepstack_worker_lang_detect"
 	return &Metrics{
 		JobsProcessed: promauto.NewCounter(prometheus.CounterOpts{
 			Namespace: namespace,
@@ -41,7 +40,7 @@ func NewMetrics() *Metrics {
 		}),
 		ParseLatency: promauto.NewHistogram(prometheus.HistogramOpts{
 			Namespace: namespace,
-			Name:      "parse_duration_seconds",
+			Name:      "parse_seconds",
 			Help:      "Time spent parsing fetched HTML.",
 			Buckets:   prometheus.DefBuckets,
 		}),
@@ -57,19 +56,19 @@ func NewMetrics() *Metrics {
 			Help:      "Number of parse attempts that resulted in errors.",
 		}),
 		LangDetectLatency: promauto.NewHistogram(prometheus.HistogramOpts{
-			Namespace: langNamespace,
-			Name:      "duration_seconds",
+			Namespace: namespace,
+			Name:      "lang_detect_duration_seconds",
 			Help:      "Time spent detecting article language.",
 			Buckets:   prometheus.DefBuckets,
 		}),
-		LangDetectSuccess: promauto.NewCounterVec(prometheus.CounterOpts{
-			Namespace: langNamespace,
-			Name:      "success_total",
+		LangDetect: promauto.NewCounterVec(prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "lang_detect",
 			Help:      "Number of successful language detections grouped by ISO code.",
 		}, []string{"lang"}),
-		LangDetectFailure: promauto.NewCounter(prometheus.CounterOpts{
-			Namespace: langNamespace,
-			Name:      "failure_total",
+		LangDetectErrors: promauto.NewCounter(prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "lang_detect_errors_total",
 			Help:      "Number of language detection attempts that failed reliability checks.",
 		}),
 	}
