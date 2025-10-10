@@ -88,6 +88,10 @@ worker:
   replicas: 1
   metricsPort: 9090
   healthPort: 8081
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 4
   resources:
     requests:
       cpu: 100m

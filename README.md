@@ -184,7 +184,7 @@ The wait commands confirm that each deployment reports an `Available` status bef
 
 ### Autoscaling policy
 
-The API deployment includes a Horizontal Pod Autoscaler that keeps at least two replicas running and can scale up to six based on 70% CPU utilization. Override `api.autoscaling.minReplicas` or `api.autoscaling.maxReplicas` in your Helm values to adjust the range for your environment.
+The API deployment includes a Horizontal Pod Autoscaler that keeps at least two replicas running and can scale up to six based on 70% CPU utilization. Override `api.autoscaling.minReplicas` or `api.autoscaling.maxReplicas` in your Helm values to adjust the range for your environment. The worker deployment also ships with a Horizontal Pod Autoscaler that keeps between one and four replicas at the same CPU target. Disable it with `worker.autoscaling.enabled=false` or tweak the bounds through `worker.autoscaling.minReplicas` and `worker.autoscaling.maxReplicas`.
 
 ## Developer workflow
 
