@@ -48,7 +48,7 @@ TAG_NAME_EXTRA="${SMOKE_TAG_NAME_EXTRA:-Smoke Extra ${RUN_ID}}"
 HIGHLIGHT_QUOTE="${SMOKE_HIGHLIGHT_QUOTE:-Keepstack highlight for ${RUN_ID}}"
 HIGHLIGHT_NOTE="${SMOKE_HIGHLIGHT_NOTE:-Keepstack note for ${RUN_ID}}"
 DIGEST_TEST_FLAG="${DIGEST_TEST:-}"
-DIGEST_TRANSPORT="${SMTP_TRANSPORT:-log}"
+DIGEST_TRANSPORT="${SMTP_URL:-log://}"
 
 log_info "Starting smoke test v0.2" "base=${BASE_URL}" "run_id=${RUN_ID}"
 
@@ -391,7 +391,7 @@ fi
 log_info "Highlight verification succeeded"
 
 if [[ -n "$DIGEST_TEST_FLAG" ]]; then
-  log_info "Running digest dry-run" "path=${DIGEST_PATH}" "transport=${DIGEST_TRANSPORT}"
+  log_info "Running digest dry-run" "path=${DIGEST_PATH}" "smtp_url=${DIGEST_TRANSPORT}"
   digest_tmp=$(mktemp)
   cleanup_files+=("$digest_tmp")
   digest_body=$(jq -n --arg transport "$DIGEST_TRANSPORT" '{transport: $transport}')

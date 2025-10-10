@@ -3,9 +3,11 @@ package digest
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"html/template"
+	"log"
 	"net/smtp"
 	"time"
 
@@ -137,13 +139,22 @@ func (s *Service) dispatch(htmlBody string, count int) error {
 	msg.WriteString("\r\n")
 	msg.WriteString(htmlBody)
 
-	var auth smtp.Auth
-	if s.config.SMTPUser != "" {
-		auth = smtp.PlainAuth("", s.config.SMTPUser, s.config.SMTPPass, s.config.SMTPHost)
-	}
+	switch s.config.Transport.Scheme {
+	case "log":
+		encoded := base64.StdEncoding.EncodeToString(msg.Bytes())
+		log.Printf("keepstack digest log transport: subject=%q recipient=%s payload_base64=%s", subject, s.config.Recipient, encoded)
+		return nil
+	case "smtp":
+		var auth smtp.Auth
+		if s.config.Transport.Username != "" {
+			auth = smtp.PlainAuth("", s.config.Transport.Username, s.config.Transport.Password, s.config.Transport.Host)
+		}
 
-	addr := fmt.Sprintf("%s:%d", s.config.SMTPHost, s.config.SMTPPort)
-	return smtp.SendMail(addr, auth, s.config.Sender, []string{s.config.Recipient}, msg.Bytes())
+		addr := fmt.Sprintf("%s:%d", s.config.Transport.Host, s.config.Transport.Port)
+		return smtp.SendMail(addr, auth, s.config.Sender, []string{s.config.Recipient}, msg.Bytes())
+	default:
+		return fmt.Errorf("unsupported transport %q", s.config.Transport.Scheme)
+	}
 }
 
 const digestTemplate = `<!DOCTYPE html>

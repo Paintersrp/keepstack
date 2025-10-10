@@ -49,7 +49,7 @@ smoke:
         {{justfile_directory()}}/scripts/smoke.sh
 
 smoke-v02:
-        if [[ -n "${DIGEST_TEST:-}" && -z "${SMTP_TRANSPORT:-}" ]]; then export SMTP_TRANSPORT=log; fi
+        if [[ -n "${DIGEST_TEST:-}" && -z "${SMTP_URL:-}" ]]; then export SMTP_URL=log://; fi
         {{justfile_directory()}}/scripts/smoke-v02.sh
 
 digest-once:
