@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="320" viewBox="0 0 560 320" role="img" aria-labelledby="title desc">
+  <title id="title">Keepstack Highlights Illustration</title>
+  <desc id="desc">Mock interface showing highlighted passages and annotations.</desc>
+  <defs>
+    <linearGradient id="panel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#1f2937" />
+    </linearGradient>
+    <style>
+      text { font-family: 'Inter', 'Segoe UI', sans-serif; }
+    </style>
+  </defs>
+  <rect width="560" height="320" fill="#020617" rx="18" />
+  <rect x="36" y="44" width="488" height="232" fill="url(#panel)" stroke="#334155" stroke-width="2" rx="18" />
+  <text x="64" y="92" font-size="26" fill="#f8fafc" font-weight="600">Reader highlights</text>
+  <g transform="translate(64,120)">
+    <rect width="416" height="64" rx="12" fill="#fde68a" fill-opacity="0.35" stroke="#fbbf24" stroke-width="1.5" />
+    <text x="20" y="32" font-size="16" fill="#f59e0b">“Pull out the key paragraphs and add context for teammates.”</text>
+  </g>
+  <g transform="translate(64,200)">
+    <rect width="416" height="64" rx="12" fill="#fce7f3" fill-opacity="0.32" stroke="#f472b6" stroke-width="1.5" />
+    <text x="20" y="30" font-size="16" fill="#ec4899">Annotation: Link this to our FY25 planning brief.</text>
+  </g>
+  <text x="64" y="264" font-size="16" fill="#94a3b8">Highlights stay attached to archives and surface in search results.</text>
+</svg>
