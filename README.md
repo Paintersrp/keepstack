@@ -80,24 +80,26 @@ keepstack/
      --from-literal=DATABASE_URL='postgres://keepstack:keepstack@postgres:5432/keepstack?sslmode=disable' \
      --from-literal=NATS_URL='nats://nats:4222' \
      --from-literal=JWT_SECRET='devdevdevdevdevdevdevdevdevdevdevdev' \
-     --from-literal=SMTP_HOST='smtp.keepstack.local' \
-     --from-literal=SMTP_PORT='587' \
-     --from-literal=SMTP_USERNAME='keepstack' \
-     --from-literal=SMTP_PASSWORD='changeme' \
+     --from-literal=SMTP_URL='smtp://keepstack:changeme@smtp.keepstack.local:587' \
      --from-literal=DIGEST_SENDER='Keepstack Digest <digest@keepstack.local>' \
      --from-literal=DIGEST_RECIPIENT='reader@keepstack.local' \
-   --from-literal=DIGEST_LIMIT='10' || true
- ```
+     --from-literal=DIGEST_LIMIT='10' || true
+```
 
    The `deploy/values/dev.yaml` file enables a scheduled digest CronJob. Adjust
    `digest.schedule`, `digest.limit`, `digest.sender`, and `digest.recipient`
    to control when emails are sent, how many unread links they include, and
    where they are delivered.
 
+   `SMTP_URL` accepts standard SMTP connection strings such as
+   `smtp://username:password@smtp.keepstack.local:587`. For local testing, use
+   `log://` to write a base64-encoded payload to the API logs instead of
+   delivering mail.
+
 ### Enabling the scheduled digest
 
 The digest CronJob is disabled in the chart defaults so production clusters can
-opt in explicitly. Provide SMTP credentials via `keepstack-secrets` and enable
+opt in explicitly. Provide an SMTP URL via `keepstack-secrets` and enable
 the job with Helm overrides:
 
 ```sh
@@ -165,10 +167,7 @@ kubectl -n keepstack create secret generic keepstack-secrets \
   --from-literal=DATABASE_URL='postgres://keepstack:keepstack@postgres:5432/keepstack?sslmode=disable' \
   --from-literal=NATS_URL='nats://nats:4222' \
   --from-literal=JWT_SECRET='devdevdevdevdevdevdevdevdevdevdevdev' \
-  --from-literal=SMTP_HOST='smtp.keepstack.local' \
-  --from-literal=SMTP_PORT='587' \
-  --from-literal=SMTP_USERNAME='keepstack' \
-  --from-literal=SMTP_PASSWORD='changeme' \
+  --from-literal=SMTP_URL='smtp://keepstack:changeme@smtp.keepstack.local:587' \
   --from-literal=DIGEST_SENDER='Keepstack Digest <digest@keepstack.local>' \
   --from-literal=DIGEST_RECIPIENT='reader@keepstack.local' \
   --from-literal=DIGEST_LIMIT='10' || true
@@ -196,7 +195,7 @@ The API deployment includes a Horizontal Pod Autoscaler that keeps at least two 
 ### Smoke test script usage & troubleshooting
 
 - **Basic usage**: Run `./scripts/smoke-v02.sh` (or `just smoke-v02`) once the Helm release is ready. Override defaults such as `SMOKE_BASE_URL`, `SMOKE_POST_TIMEOUT`, or `SMOKE_POLL_TIMEOUT` to target alternative ingress URLs or tune slow environments.
-- **Digest dry-run**: Export `DIGEST_TEST=1` to trigger the optional digest preview step. When set, `just smoke-v02` defaults `SMTP_TRANSPORT=log` so the API logs the rendered email instead of attempting an SMTP delivery.
+- **Digest dry-run**: Export `DIGEST_TEST=1` to trigger the optional digest preview step. When set, `just smoke-v02` defaults `SMTP_URL=log://` so the API logs the rendered email instead of attempting an SMTP delivery.
 - **Ingress routing failures**: If the script reports connection or DNS errors, confirm the ingress controller is ready with `kubectl -n ingress-nginx get pods` and that `/etc/hosts` (or your DNS) resolves `keepstack.localtest.me`.
 - **Pending database migrations**: A `201` POST followed by repeated polling without the link appearing usually indicates the worker cannot finish migrations. Check the Postgres pod logs (`kubectl -n keepstack logs statefulset/keepstack-postgres`) and re-run `helm-dev` after resolving schema issues.
 - **API readiness**: HTTP `5xx` responses or cURL timeouts imply the API deployment is still starting. Verify readiness with `kubectl -n keepstack get deploy keepstack-api` and inspect logs via `just logs`.

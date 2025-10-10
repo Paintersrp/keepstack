@@ -11,10 +11,8 @@ func TestRenderHTML(t *testing.T) {
 		Limit:     5,
 		Sender:    "sender@example.com",
 		Recipient: "recipient@example.com",
-		SMTPHost:  "smtp.example.com",
-		SMTPPort:  587,
-		SMTPUser:  "user",
-		SMTPPass:  "pass",
+		SMTPURL:   "log://",
+		Transport: Transport{Scheme: "log"},
 	}
 
 	svc, err := New(nil, cfg)
