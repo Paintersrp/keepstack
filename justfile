@@ -48,6 +48,12 @@ seed:
 smoke:
         {{justfile_directory()}}/scripts/smoke.sh
 
+smoke-v02:
+        {{justfile_directory()}}/scripts/smoke.sh
+
+digest-once:
+        kubectl -n {{NAMESPACE}} create job digest-once-$(date +%s) --from=cronjob/keepstack-digest
+
 test:
         (cd apps/api && go test ./...)
         (cd apps/worker && go test ./...)
