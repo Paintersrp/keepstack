@@ -49,7 +49,8 @@ smoke:
         {{justfile_directory()}}/scripts/smoke.sh
 
 smoke-v02:
-        {{justfile_directory()}}/scripts/smoke.sh
+        if [[ -n "${DIGEST_TEST:-}" && -z "${SMTP_TRANSPORT:-}" ]]; then export SMTP_TRANSPORT=log; fi
+        {{justfile_directory()}}/scripts/smoke-v02.sh
 
 digest-once:
         kubectl -n {{NAMESPACE}} create job digest-once-$(date +%s) --from=cronjob/keepstack-digest
