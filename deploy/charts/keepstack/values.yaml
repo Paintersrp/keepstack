@@ -46,6 +46,12 @@ migrate:
       cpu: 200m
       memory: 256Mi
 
+digest:
+  enabled: false
+  schedule: "0 9 * * *"
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+
 api:
   replicas: 2
   autoscaling:

@@ -12,6 +12,13 @@ secrets:
     DATABASE_URL: "postgres://keepstack:keepstack@keepstack-postgres:5432/keepstack?sslmode=disable"
     NATS_URL: "nats://keepstack-nats:4222"
     JWT_SECRET: "devdevdevdevdevdevdevdevdevdevdevdev"
+    SMTP_HOST: "smtp.keepstack.local"
+    SMTP_PORT: "587"
+    SMTP_USERNAME: "keepstack"
+    SMTP_PASSWORD: "changeme"
+    DIGEST_SENDER: "Keepstack Digest <digest@keepstack.local>"
+    DIGEST_RECIPIENT: "reader@keepstack.local"
+    DIGEST_LIMIT: "10"
 
 api:
   replicas: 2
@@ -38,6 +45,13 @@ worker:
 
 web:
   replicas: 1
+
+digest:
+  enabled: true
+  schedule: "0 9 * * *"
+  limit: 10
+  sender: "Keepstack Digest <digest@keepstack.local>"
+  recipient: "reader@keepstack.local"
 
 postgres:
   storage: 5Gi
