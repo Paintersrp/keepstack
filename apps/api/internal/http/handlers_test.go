@@ -574,8 +574,8 @@ func TestHighlightLifecycle(t *testing.T) {
 			highlight := db.Highlight{
 				ID:         uuidToPg(id),
 				LinkID:     params.LinkID,
-				Quote:      params.Quote,
-				Annotation: params.Annotation,
+				Quote:      params.Text,
+				Annotation: params.Note,
 				CreatedAt:  pgtype.Timestamptz{Time: time.Now(), Valid: true},
 				UpdatedAt:  pgtype.Timestamptz{Time: time.Now(), Valid: true},
 			}
@@ -595,8 +595,8 @@ func TestHighlightLifecycle(t *testing.T) {
 			if !ok {
 				return db.Highlight{}, pgx.ErrNoRows
 			}
-			highlight.Quote = params.Quote
-			highlight.Annotation = params.Annotation
+			highlight.Quote = params.Text
+			highlight.Annotation = params.Note
 			highlight.UpdatedAt = pgtype.Timestamptz{Time: time.Now(), Valid: true}
 			highlights[hid] = highlight
 			return highlight, nil
@@ -612,7 +612,7 @@ func TestHighlightLifecycle(t *testing.T) {
 	srv.RegisterRoutes(e)
 
 	// Create highlight
-	createBody := `{"quote":"hello world"}`
+	createBody := `{"text":"hello world"}`
 	createReq := httptest.NewRequest(http.MethodPost, "/api/links/"+linkID.String()+"/highlights", strings.NewReader(createBody))
 	createReq.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	createRec := httptest.NewRecorder()
@@ -630,7 +630,7 @@ func TestHighlightLifecycle(t *testing.T) {
 	}
 
 	// Update highlight
-	updateBody := `{"quote":"updated","annotation":"note"}`
+	updateBody := `{"text":"updated","note":"note"}`
 	updateReq := httptest.NewRequest(http.MethodPut, "/api/links/"+linkID.String()+"/highlights/"+created.ID, strings.NewReader(updateBody))
 	updateReq.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	updateRec := httptest.NewRecorder()
@@ -678,7 +678,7 @@ func TestHighlightRateLimit(t *testing.T) {
 	e := echo.New()
 	srv.RegisterRoutes(e)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/links/"+linkID.String()+"/highlights", strings.NewReader(`{"quote":"hello"}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/links/"+linkID.String()+"/highlights", strings.NewReader(`{"text":"hello"}`))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)

@@ -309,7 +309,7 @@ log_info "Tag-filtered query succeeded" "tags=${TAG_NAME},${TAG_NAME_ALT}"
 
 highlight_tmp=$(mktemp)
 cleanup_files+=("$highlight_tmp")
-highlight_body=$(jq -n --arg quote "$HIGHLIGHT_QUOTE" --arg annotation "$HIGHLIGHT_ANNOTATION" '{quote: $quote, annotation: $annotation}')
+highlight_body=$(jq -n --arg text "$HIGHLIGHT_QUOTE" --arg note "$HIGHLIGHT_ANNOTATION" '{text: $text, note: $note}')
 
 highlight_status=$(perform_request "$highlight_tmp" \
   --max-time "$POST_TIMEOUT" \
@@ -353,10 +353,10 @@ if [[ "$highlight_check_status" != "200" ]]; then
   exit 1
 fi
 
-if ! jq -e --arg id "$link_id" --arg quote "$HIGHLIGHT_QUOTE" \
-  '.items[] | select(.id == $id) | .highlights[] | select(.quote == $quote)' \
+if ! jq -e --arg id "$link_id" --arg text "$HIGHLIGHT_QUOTE" \
+  '.items[] | select(.id == $id) | .highlights[] | select(.text == $text)' \
   "$highlight_check_tmp" >/dev/null 2>&1; then
-  log_error "Highlight not present in query results" "link=${link_id}" "quote=${HIGHLIGHT_QUOTE}"
+  log_error "Highlight not present in query results" "link=${link_id}" "text=${HIGHLIGHT_QUOTE}"
   if [[ -s "$highlight_check_tmp" ]]; then
     cat "$highlight_check_tmp" >&2
   fi
