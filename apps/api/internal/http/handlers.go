@@ -202,12 +202,8 @@ type updateTagRequest struct {
 	Name string `json:"name"`
 }
 
-type linkTagRequest struct {
-	Name string `json:"name"`
-}
-
-type replaceLinkTagsRequest struct {
-	Tags []string `json:"tags"`
+type linkTagsRequest struct {
+	TagIDs []int32 `json:"tagIds"`
 }
 
 type highlightRequest struct {
@@ -548,32 +544,14 @@ func (s *Server) handleAddLinkTag(c echo.Context) error {
 		return respondWithError(c, err)
 	}
 
-	var req linkTagRequest
+	var req linkTagsRequest
 	if err := c.Bind(&req); err != nil {
 		s.metrics.LinkTagMutateFailure.Inc()
 		return c.JSON(stdhttp.StatusBadRequest, map[string]string{"error": "invalid payload"})
 	}
 
-	name := strings.TrimSpace(req.Name)
-	if name == "" {
-		s.metrics.LinkTagMutateFailure.Inc()
-		return c.JSON(stdhttp.StatusBadRequest, map[string]string{"error": "name is required"})
-	}
-
 	ctx := c.Request().Context()
-	tags, err := s.queries.ListTagsForLink(ctx, uuidToPg(linkID))
-	if err != nil {
-		s.metrics.LinkTagMutateFailure.Inc()
-		return c.JSON(stdhttp.StatusInternalServerError, map[string]string{"error": "failed to list tags"})
-	}
-
-	names := make([]string, 0, len(tags)+1)
-	for _, tag := range tags {
-		names = append(names, tag.Name)
-	}
-	names = append(names, name)
-
-	responses, err := s.setLinkTags(ctx, linkID, names)
+	responses, err := s.setLinkTags(ctx, linkID, req.TagIDs)
 	if err != nil {
 		s.metrics.LinkTagMutateFailure.Inc()
 		return respondWithError(c, err)
@@ -595,14 +573,14 @@ func (s *Server) handleReplaceLinkTags(c echo.Context) error {
 		return respondWithError(c, err)
 	}
 
-	var req replaceLinkTagsRequest
+	var req linkTagsRequest
 	if err := c.Bind(&req); err != nil {
 		s.metrics.LinkTagMutateFailure.Inc()
 		return c.JSON(stdhttp.StatusBadRequest, map[string]string{"error": "invalid payload"})
 	}
 
 	ctx := c.Request().Context()
-	responses, err := s.setLinkTags(ctx, linkID, req.Tags)
+	responses, err := s.setLinkTags(ctx, linkID, req.TagIDs)
 	if err != nil {
 		s.metrics.LinkTagMutateFailure.Inc()
 		return respondWithError(c, err)
@@ -905,57 +883,44 @@ func parseInt32Param(raw string) (int32, error) {
 	return int32(value), nil
 }
 
-func (s *Server) setLinkTags(ctx context.Context, linkID uuid.UUID, names []string) ([]tagResponse, error) {
-	desired := make(map[string]string)
-	for _, raw := range names {
-		trimmed := strings.TrimSpace(raw)
-		if trimmed == "" {
+func (s *Server) setLinkTags(ctx context.Context, linkID uuid.UUID, ids []int32) ([]tagResponse, error) {
+	unique := make([]int32, 0, len(ids))
+	seen := make(map[int32]struct{}, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			return nil, apiError{Code: stdhttp.StatusBadRequest, Message: "tag ids must be positive"}
+		}
+		if _, exists := seen[id]; exists {
 			continue
 		}
-		key := strings.ToLower(trimmed)
-		if _, exists := desired[key]; !exists {
-			desired[key] = trimmed
-		}
+		seen[id] = struct{}{}
+		unique = append(unique, id)
 	}
 
-	if len(names) > 0 && len(desired) == 0 {
-		return nil, apiError{Code: stdhttp.StatusBadRequest, Message: "tag names must be non-empty"}
-	}
-
-	current, err := s.queries.ListTagsForLink(ctx, uuidToPg(linkID))
+	linkIDPG := uuidToPg(linkID)
+	current, err := s.queries.ListTagsForLink(ctx, linkIDPG)
 	if err != nil {
 		return nil, apiError{Code: stdhttp.StatusInternalServerError, Message: "failed to list tags"}
 	}
 
 	currentByID := make(map[int32]db.Tag, len(current))
-	currentByKey := make(map[string]db.Tag, len(current))
 	for _, tag := range current {
 		currentByID[tag.ID] = tag
-		currentByKey[strings.ToLower(tag.Name)] = tag
 	}
 
-	desiredTags := make(map[int32]db.Tag)
-	for key, name := range desired {
-		var tag db.Tag
-		if existing, ok := currentByKey[key]; ok {
-			tag = existing
-		} else {
-			tag, err = s.queries.GetTagByName(ctx, name)
-			if err != nil {
-				if errors.Is(err, pgx.ErrNoRows) {
-					tag, err = s.queries.CreateTag(ctx, name)
-					if err != nil {
-						return nil, apiError{Code: stdhttp.StatusInternalServerError, Message: "failed to create tag"}
-					}
-				} else {
-					return nil, apiError{Code: stdhttp.StatusInternalServerError, Message: "failed to resolve tag"}
-				}
+	desiredTags := make(map[int32]db.Tag, len(unique))
+	for _, id := range unique {
+		tag, err := s.queries.GetTag(ctx, id)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return nil, apiError{Code: stdhttp.StatusBadRequest, Message: "tag not found"}
 			}
+			return nil, apiError{Code: stdhttp.StatusInternalServerError, Message: "failed to resolve tag"}
 		}
 
-		desiredTags[tag.ID] = tag
-		if _, ok := currentByID[tag.ID]; !ok {
-			if err := s.queries.AddTagToLink(ctx, db.AddTagToLinkParams{LinkID: uuidToPg(linkID), TagID: tag.ID}); err != nil {
+		desiredTags[id] = tag
+		if _, ok := currentByID[id]; !ok {
+			if err := s.queries.AddTagToLink(ctx, db.AddTagToLinkParams{LinkID: linkIDPG, TagID: id}); err != nil {
 				return nil, apiError{Code: stdhttp.StatusInternalServerError, Message: "failed to assign tag"}
 			}
 		}
@@ -963,7 +928,7 @@ func (s *Server) setLinkTags(ctx context.Context, linkID uuid.UUID, names []stri
 
 	for id := range currentByID {
 		if _, ok := desiredTags[id]; !ok {
-			if err := s.queries.RemoveTagFromLink(ctx, db.RemoveTagFromLinkParams{LinkID: uuidToPg(linkID), TagID: id}); err != nil {
+			if err := s.queries.RemoveTagFromLink(ctx, db.RemoveTagFromLinkParams{LinkID: linkIDPG, TagID: id}); err != nil {
 				return nil, apiError{Code: stdhttp.StatusInternalServerError, Message: "failed to remove tag"}
 			}
 		}
