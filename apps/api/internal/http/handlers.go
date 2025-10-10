@@ -411,18 +411,19 @@ func (s *Server) handleCreateTag(c echo.Context) error {
 		return c.JSON(stdhttp.StatusInternalServerError, map[string]string{"error": "failed to resolve tag"})
 	}
 
-	status := stdhttp.StatusOK
-	if errors.Is(err, pgx.ErrNoRows) {
-		tag, err = s.queries.CreateTag(ctx, name)
-		if err != nil {
-			s.metrics.TagCreateFailure.Inc()
-			return c.JSON(stdhttp.StatusInternalServerError, map[string]string{"error": "failed to create tag"})
-		}
-		status = stdhttp.StatusCreated
+	if err == nil {
+		s.metrics.TagCreateFailure.Inc()
+		return c.JSON(stdhttp.StatusConflict, map[string]string{"error": "tag already exists"})
+	}
+
+	tag, err = s.queries.CreateTag(ctx, name)
+	if err != nil {
+		s.metrics.TagCreateFailure.Inc()
+		return c.JSON(stdhttp.StatusInternalServerError, map[string]string{"error": "failed to create tag"})
 	}
 
 	s.metrics.TagCreateSuccess.Inc()
-	return c.JSON(status, tagResponse{ID: tag.ID, Name: tag.Name})
+	return c.JSON(stdhttp.StatusCreated, tagResponse{ID: tag.ID, Name: tag.Name})
 }
 
 func (s *Server) handleGetTag(c echo.Context) error {
