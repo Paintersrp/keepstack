@@ -152,7 +152,7 @@ values out of Helm overrides.
 
 ### Smoke test expectations
 
-`just smoke` now performs an end-to-end workflow: it creates a link, waits for the worker to archive it, ensures tag creation/assignment works, and verifies highlights are persisted alongside search responses. The run passes when the tagged link and highlight appear in API results, confirming the API, worker, Postgres, and ingress are all wired together.
+`just smoke-v02` executes the v0.2 workflow end-to-end: it creates a link, waits for the worker to archive it, exercises tag replacement semantics (including multi-tag AND filtering), and verifies that highlights capture both text and note content. The run passes when the tagged link and highlight appear in API results, confirming the API, worker, Postgres, and ingress are all wired together.
 
 ## Verify v0.1
 
@@ -195,7 +195,8 @@ The API deployment includes a Horizontal Pod Autoscaler that keeps at least two 
 
 ### Smoke test script usage & troubleshooting
 
-- **Basic usage**: Run `./scripts/smoke.sh` (or `just smoke`) once the Helm release is ready. Override defaults such as `SMOKE_BASE_URL`, `SMOKE_POST_TIMEOUT`, or `SMOKE_POLL_TIMEOUT` to target alternative ingress URLs or tune slow environments.
+- **Basic usage**: Run `./scripts/smoke-v02.sh` (or `just smoke-v02`) once the Helm release is ready. Override defaults such as `SMOKE_BASE_URL`, `SMOKE_POST_TIMEOUT`, or `SMOKE_POLL_TIMEOUT` to target alternative ingress URLs or tune slow environments.
+- **Digest dry-run**: Export `DIGEST_TEST=1` to trigger the optional digest preview step. When set, `just smoke-v02` defaults `SMTP_TRANSPORT=log` so the API logs the rendered email instead of attempting an SMTP delivery.
 - **Ingress routing failures**: If the script reports connection or DNS errors, confirm the ingress controller is ready with `kubectl -n ingress-nginx get pods` and that `/etc/hosts` (or your DNS) resolves `keepstack.localtest.me`.
 - **Pending database migrations**: A `201` POST followed by repeated polling without the link appearing usually indicates the worker cannot finish migrations. Check the Postgres pod logs (`kubectl -n keepstack logs statefulset/keepstack-postgres`) and re-run `helm-dev` after resolving schema issues.
 - **API readiness**: HTTP `5xx` responses or cURL timeouts imply the API deployment is still starting. Verify readiness with `kubectl -n keepstack get deploy keepstack-api` and inspect logs via `just logs`.
