@@ -24,6 +24,12 @@ const listRoute = createRoute({
   path: "/",
   validateSearch: (search: Record<string, unknown>) => ({
     q: typeof search.q === "string" ? search.q : "",
+    tags:
+      typeof search.tags === "string"
+        ? search.tags.split(",").filter(Boolean)
+        : Array.isArray(search.tags)
+        ? (search.tags.filter((value): value is string => typeof value === "string") as string[])
+        : [],
     favorite:
       typeof search.favorite === "string"
         ? search.favorite === "true"
@@ -31,7 +37,15 @@ const listRoute = createRoute({
           : search.favorite === "false"
           ? false
           : undefined
+        : typeof search.favorite === "boolean"
+        ? search.favorite
         : undefined,
+    page:
+      typeof search.page === "string"
+        ? Math.max(1, Number.parseInt(search.page, 10) || 1)
+        : typeof search.page === "number"
+        ? Math.max(1, Math.floor(search.page))
+        : 1,
   }),
   component: () => {
     const navigate = listRoute.useNavigate();
@@ -40,7 +54,15 @@ const listRoute = createRoute({
       <ListPage
         search={search}
         onSearchChange={(next) =>
-          navigate({ to: "/", search: { q: next.q ?? "", favorite: next.favorite } })
+          navigate({
+            to: "/",
+            search: {
+              q: next.q ?? "",
+              favorite: next.favorite,
+              tags: next.tags && next.tags.length > 0 ? next.tags : undefined,
+              page: next.page && next.page > 1 ? next.page : undefined,
+            },
+          })
         }
       />
     );

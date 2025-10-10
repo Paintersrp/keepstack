@@ -3,6 +3,10 @@ export interface TagSummary {
   name: string;
 }
 
+export interface TagWithCount extends TagSummary {
+  link_count: number;
+}
+
 export interface HighlightSummary {
   id: string;
   quote: string;
@@ -95,5 +99,57 @@ export function createLink(input: CreateLinkInput): Promise<CreateLinkResponse> 
   return request<CreateLinkResponse>("/links", {
     method: "POST",
     body: JSON.stringify(input)
+  });
+}
+
+export interface UpdateLinkInput {
+  favorite?: boolean;
+  tags?: string[];
+}
+
+export function updateLink(linkId: string, input: UpdateLinkInput): Promise<LinkSummary> {
+  return request<LinkSummary>(`/links/${linkId}`, {
+    method: "PATCH",
+    body: JSON.stringify(input)
+  });
+}
+
+export function listTags(): Promise<TagWithCount[]> {
+  return request<TagWithCount[]>("/tags", { method: "GET" });
+}
+
+export interface CreateTagInput {
+  name: string;
+}
+
+export function createTag(input: CreateTagInput): Promise<TagWithCount> {
+  return request<TagWithCount>("/tags", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export function deleteTag(tagId: number): Promise<void> {
+  return request<void>(`/tags/${tagId}`, { method: "DELETE" });
+}
+
+export interface CreateHighlightInput {
+  quote: string;
+  annotation?: string;
+}
+
+export function createHighlight(
+  linkId: string,
+  input: CreateHighlightInput
+): Promise<HighlightSummary> {
+  return request<HighlightSummary>(`/links/${linkId}/highlights`, {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export function deleteHighlight(linkId: string, highlightId: string): Promise<void> {
+  return request<void>(`/links/${linkId}/highlights/${highlightId}`, {
+    method: "DELETE"
   });
 }
