@@ -37,11 +37,22 @@ func (p *Processor) Process(ctx context.Context, linkID uuid.UUID) error {
 	p.metrics.FetchLatency.Observe(time.Since(fetchStart).Seconds())
 
 	parseStart := time.Now()
-	article, err := Parse(result.FinalURL, result.Body)
+	article, diagnostics, err := Parse(result.FinalURL, result.Body)
+	parseDuration := time.Since(parseStart)
+	p.metrics.ParseLatency.Observe(parseDuration.Seconds())
 	if err != nil {
+		p.metrics.ParseFailures.Inc()
 		return fmt.Errorf("parse: %w", err)
 	}
-	p.metrics.ParseLatency.Observe(time.Since(parseStart).Seconds())
+
+	if diagnostics.LangDetectDuration > 0 {
+		p.metrics.LangDetectLatency.Observe(diagnostics.LangDetectDuration.Seconds())
+	}
+	if diagnostics.LangDetected {
+		p.metrics.LangDetectSuccess.WithLabelValues(article.Language).Inc()
+	} else if diagnostics.LangDetectDuration > 0 {
+		p.metrics.LangDetectFailure.Inc()
+	}
 
 	persistStart := time.Now()
 	if err := p.store.PersistResult(ctx, link, article, result.Body); err != nil {

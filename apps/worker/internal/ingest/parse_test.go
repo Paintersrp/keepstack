@@ -1,23 +1,77 @@
 package ingest
 
 import (
-	"strings"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
-func TestParse(t *testing.T) {
-	html := []byte(`<!doctype html><html><head><title>Example</title></head><body><h1>Hello</h1><p>World</p></body></html>`)
-	article, err := Parse("https://example.com", html)
+func TestParseReadabilityExtraction(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		fixture  string
+		url      string
+		wantLang string
+		minWords int
+	}{
+		{
+			name:     "english_article",
+			fixture:  "english_article.html",
+			url:      "https://example.com/articles/english",
+			wantLang: "en",
+			minWords: 20,
+		},
+		{
+			name:     "spanish_article",
+			fixture:  "spanish_article.html",
+			url:      "https://example.com/articulos/spanish",
+			wantLang: "es",
+			minWords: 20,
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			html := readFixture(t, tc.fixture)
+			article, diagnostics, err := Parse(tc.url, html)
+			if err != nil {
+				t.Fatalf("Parse returned error: %v", err)
+			}
+
+			if article.Title == "" {
+				t.Fatalf("expected non-empty title")
+			}
+			if article.TextContent == "" {
+				t.Fatalf("expected non-empty text content")
+			}
+			if article.HTMLContent == "" {
+				t.Fatalf("expected non-empty HTML content")
+			}
+			if article.WordCount < tc.minWords {
+				t.Fatalf("expected word count >= %d, got %d", tc.minWords, article.WordCount)
+			}
+			if article.Language != tc.wantLang {
+				t.Fatalf("expected language %q, got %q", tc.wantLang, article.Language)
+			}
+			if !diagnostics.LangDetected {
+				t.Fatalf("expected language detection to succeed")
+			}
+		})
+	}
+}
+
+func readFixture(t *testing.T, name string) []byte {
+	t.Helper()
+
+	path := filepath.Join("testdata", name)
+	data, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("read fixture %s: %v", name, err)
 	}
-	if article.Title != "Example" {
-		t.Fatalf("expected title Example, got %q", article.Title)
-	}
-	if !strings.Contains(article.TextContent, "Hello") && !strings.Contains(article.TextContent, "World") {
-		t.Fatalf("expected text content to include sample HTML text, got %q", article.TextContent)
-	}
-	if article.WordCount == 0 {
-		t.Fatalf("expected word count > 0")
-	}
+	return data
 }
