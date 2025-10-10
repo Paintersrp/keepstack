@@ -3,6 +3,7 @@ package ingest
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -21,7 +22,7 @@ func TestParseReadabilityExtraction(t *testing.T) {
 			fixture:  "english_article.html",
 			url:      "https://example.com/articles/english",
 			wantLang: "en",
-			minWords: 20,
+			minWords: 60,
 		},
 		{
 			name:     "spanish_article",
@@ -52,14 +53,27 @@ func TestParseReadabilityExtraction(t *testing.T) {
 			if article.HTMLContent == "" {
 				t.Fatalf("expected non-empty HTML content")
 			}
+			textWordCount := len(strings.Fields(article.TextContent))
+			if textWordCount != article.WordCount {
+				t.Fatalf("expected text content word count %d to match article.WordCount %d", textWordCount, article.WordCount)
+			}
 			if article.WordCount < tc.minWords {
 				t.Fatalf("expected word count >= %d, got %d", tc.minWords, article.WordCount)
+			}
+			minTextLength := tc.minWords * 3
+			if len(article.TextContent) < minTextLength {
+				t.Fatalf("expected text content length >= %d, got %d", minTextLength, len(article.TextContent))
 			}
 			if article.Language != tc.wantLang {
 				t.Fatalf("expected language %q, got %q", tc.wantLang, article.Language)
 			}
 			if !diagnostics.LangDetected {
 				t.Fatalf("expected language detection to succeed")
+			}
+			if diagnostics.LangDetected {
+				if article.Language != tc.wantLang || article.WordCount < tc.minWords {
+					t.Fatalf("language detection succeeded but produced inconsistent results: lang=%q words=%d", article.Language, article.WordCount)
+				}
 			}
 		})
 	}
