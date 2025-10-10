@@ -367,21 +367,15 @@ func TestHandleReplaceLinkTags(t *testing.T) {
 			copy(copyTags, currentTags)
 			return copyTags, nil
 		},
-		getTagByNameFn: func(ctx context.Context, name string) (db.Tag, error) {
-			switch name {
-			case "beta":
+		getTagFn: func(ctx context.Context, id int32) (db.Tag, error) {
+			switch id {
+			case 2:
 				return db.Tag{ID: 2, Name: "beta"}, nil
-			case "gamma":
-				return db.Tag{}, pgx.ErrNoRows
+			case 3:
+				return db.Tag{ID: 3, Name: "gamma"}, nil
 			default:
-				return db.Tag{}, fmt.Errorf("unexpected tag lookup: %s", name)
+				return db.Tag{}, fmt.Errorf("unexpected tag lookup: %d", id)
 			}
-		},
-		createTagFn: func(ctx context.Context, name string) (db.Tag, error) {
-			if name != "gamma" {
-				t.Fatalf("unexpected tag creation: %s", name)
-			}
-			return db.Tag{ID: 3, Name: name}, nil
 		},
 		addTagToLinkFn: func(ctx context.Context, params db.AddTagToLinkParams) error {
 			added = append(added, params.TagID)
@@ -405,7 +399,7 @@ func TestHandleReplaceLinkTags(t *testing.T) {
 	e := echo.New()
 	srv.RegisterRoutes(e)
 
-	body := `{"tags":["beta","gamma"]}`
+	body := `{"tagIds":[2,3]}`
 	req := httptest.NewRequest(http.MethodPut, "/api/links/"+linkID.String()+"/tags", strings.NewReader(body))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
@@ -419,6 +413,112 @@ func TestHandleReplaceLinkTags(t *testing.T) {
 	}
 	if len(removed) != 1 || removed[0] != 1 {
 		t.Fatalf("expected to remove tag 1, got %v", removed)
+	}
+}
+
+func TestHandleReplaceLinkTagsIdempotent(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{DevUserID: uuid.MustParse("abababab-abab-abab-abab-abababababab")}
+	linkID := uuid.New()
+
+	queries := &mockQueries{
+		getLinkFn: func(ctx context.Context, id pgtype.UUID) (db.GetLinkRow, error) {
+			return db.GetLinkRow{ID: id, UserID: uuidToPg(cfg.DevUserID)}, nil
+		},
+		listTagsForLinkFn: func(ctx context.Context, id pgtype.UUID) ([]db.Tag, error) {
+			return []db.Tag{{ID: 1, Name: "alpha"}, {ID: 2, Name: "beta"}}, nil
+		},
+		getTagFn: func(ctx context.Context, id int32) (db.Tag, error) {
+			switch id {
+			case 1:
+				return db.Tag{ID: 1, Name: "alpha"}, nil
+			case 2:
+				return db.Tag{ID: 2, Name: "beta"}, nil
+			default:
+				return db.Tag{}, fmt.Errorf("unexpected tag lookup: %d", id)
+			}
+		},
+		addTagToLinkFn: func(ctx context.Context, params db.AddTagToLinkParams) error {
+			t.Fatalf("unexpected AddTagToLink call: %v", params.TagID)
+			return nil
+		},
+		removeTagFromLinkFn: func(ctx context.Context, params db.RemoveTagFromLinkParams) error {
+			t.Fatalf("unexpected RemoveTagFromLink call: %v", params.TagID)
+			return nil
+		},
+	}
+
+	srv := &Server{cfg: cfg, queries: queries, metrics: newTestMetrics()}
+	e := echo.New()
+	srv.RegisterRoutes(e)
+
+	body := `{"tagIds":[1,2,1]}`
+	req := httptest.NewRequest(http.MethodPut, "/api/links/"+linkID.String()+"/tags", strings.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+}
+
+func TestHandleAddLinkTagsReplacesAll(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{DevUserID: uuid.MustParse("12121212-1212-1212-1212-121212121212")}
+	linkID := uuid.New()
+
+	currentTags := []db.Tag{{ID: 5, Name: "old"}}
+	added := make([]int32, 0)
+	removed := make([]int32, 0)
+
+	queries := &mockQueries{
+		getLinkFn: func(ctx context.Context, id pgtype.UUID) (db.GetLinkRow, error) {
+			return db.GetLinkRow{ID: id, UserID: uuidToPg(cfg.DevUserID)}, nil
+		},
+		listTagsForLinkFn: func(ctx context.Context, id pgtype.UUID) ([]db.Tag, error) {
+			copyTags := make([]db.Tag, len(currentTags))
+			copy(copyTags, currentTags)
+			return copyTags, nil
+		},
+		getTagFn: func(ctx context.Context, id int32) (db.Tag, error) {
+			switch id {
+			case 6:
+				return db.Tag{ID: 6, Name: "new"}, nil
+			default:
+				return db.Tag{}, fmt.Errorf("unexpected tag lookup: %d", id)
+			}
+		},
+		addTagToLinkFn: func(ctx context.Context, params db.AddTagToLinkParams) error {
+			added = append(added, params.TagID)
+			return nil
+		},
+		removeTagFromLinkFn: func(ctx context.Context, params db.RemoveTagFromLinkParams) error {
+			removed = append(removed, params.TagID)
+			return nil
+		},
+	}
+
+	srv := &Server{cfg: cfg, queries: queries, metrics: newTestMetrics()}
+	e := echo.New()
+	srv.RegisterRoutes(e)
+
+	body := `{"tagIds":[6]}`
+	req := httptest.NewRequest(http.MethodPost, "/api/links/"+linkID.String()+"/tags", strings.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, rec.Code)
+	}
+	if len(added) != 1 || added[0] != 6 {
+		t.Fatalf("expected to add tag 6, got %v", added)
+	}
+	if len(removed) != 1 || removed[0] != 5 {
+		t.Fatalf("expected to remove tag 5, got %v", removed)
 	}
 }
 

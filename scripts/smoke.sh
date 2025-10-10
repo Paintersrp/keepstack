@@ -61,6 +61,7 @@ LINK_URL="${SMOKE_LINK_URL:-https://example.com/${slug}}"
 LINK_TITLE="${SMOKE_LINK_TITLE:-Smoke Test ${slug}}"
 QUERY="${SMOKE_QUERY:-${slug}}"
 TAG_NAME="${SMOKE_TAG_NAME:-Smoke Tag ${slug}}"
+TAG_NAME_ALT="${SMOKE_TAG_NAME_ALT:-${TAG_NAME} Alt}"
 HIGHLIGHT_QUOTE="${SMOKE_HIGHLIGHT_QUOTE:-Smoke highlight ${slug}}"
 HIGHLIGHT_ANNOTATION="${SMOKE_HIGHLIGHT_ANNOTATION:-Smoke annotation ${slug}}"
 
@@ -136,25 +137,96 @@ if [[ "$link_found" != "true" ]]; then
   exit 1
 fi
 
-tag_tmp=$(mktemp)
-cleanup_files+=("$tag_tmp")
-tag_body=$(jq -n --arg name "$TAG_NAME" '{name: $name}')
+ensure_tag() {
+  local name="$1"
+  local tmp
+  tmp=$(mktemp)
+  cleanup_files+=("$tmp")
+  local body
+  body=$(jq -n --arg name "$name" '{name: $name}')
 
-tag_status=$(perform_request "$tag_tmp" \
-  --max-time "$POST_TIMEOUT" \
-  -H 'Content-Type: application/json' \
-  -X POST "$BASE_URL/api/tags" \
-  -d "$tag_body")
+  local status
+  status=$(perform_request "$tmp" \
+    --max-time "$POST_TIMEOUT" \
+    -H 'Content-Type: application/json' \
+    -X POST "$BASE_URL/api/tags" \
+    -d "$body")
 
-if [[ "$tag_status" != "201" && "$tag_status" != "200" && "$tag_status" != "409" ]]; then
-  log_error "Unexpected tag response" "status=${tag_status}"
-  if [[ -s "$tag_tmp" ]]; then
-    cat "$tag_tmp" >&2
+  if [[ "$status" != "201" && "$status" != "200" && "$status" != "409" ]]; then
+    log_error "Unexpected tag response" "name=${name}" "status=${status}"
+    if [[ -s "$tmp" ]]; then
+      cat "$tmp" >&2
+    fi
+    exit 1
+  fi
+
+  log_info "Tag ensured" "name=${name}" "status=${status}"
+
+  local id
+  if [[ "$status" == "201" ]]; then
+    id=$(jq -r '.id // empty' "$tmp" 2>/dev/null || true)
+  fi
+
+  if [[ -z "$id" ]]; then
+    local list_tmp
+    list_tmp=$(mktemp)
+    cleanup_files+=("$list_tmp")
+
+    local list_status
+    list_status=$(perform_request "$list_tmp" \
+      --max-time "$GET_TIMEOUT" \
+      -G "$BASE_URL/api/tags")
+
+    if [[ "$list_status" != "200" ]]; then
+      log_error "Failed to fetch tags" "status=${list_status}"
+      if [[ -s "$list_tmp" ]]; then
+        cat "$list_tmp" >&2
+      fi
+      exit 1
+    fi
+
+    id=$(jq -r --arg name "$name" '.tags[] | select(.name == $name) | .id' "$list_tmp" 2>/dev/null || true)
+  fi
+
+  if [[ -z "$id" ]]; then
+    log_error "Unable to resolve tag id" "name=${name}"
+    exit 1
+  fi
+
+  printf '%s' "$id"
+}
+
+tag_id=$(ensure_tag "$TAG_NAME")
+tag_id_alt=$(ensure_tag "$TAG_NAME_ALT")
+
+# Verify AND semantics prior to assignment
+pre_assign_tmp=$(mktemp)
+cleanup_files+=("$pre_assign_tmp")
+
+pre_assign_status=$(perform_request "$pre_assign_tmp" \
+  --max-time "$GET_TIMEOUT" \
+  -G "$BASE_URL$GET_PATH" \
+  --data-urlencode "tags=${TAG_NAME},${TAG_NAME_ALT}" \
+  --data-urlencode 'limit=5')
+
+if [[ "$pre_assign_status" != "200" ]]; then
+  log_error "Pre-assignment tag query failed" "status=${pre_assign_status}"
+  if [[ -s "$pre_assign_tmp" ]]; then
+    cat "$pre_assign_tmp" >&2
   fi
   exit 1
 fi
 
-log_info "Tag ensured" "name=${TAG_NAME}" "status=${tag_status}"
+if jq -e --arg id "$link_id" '.items[] | select(.id == $id)' "$pre_assign_tmp" >/dev/null 2>&1; then
+  log_error "Link unexpectedly present before tag assignment" "link=${link_id}"
+  cat "$pre_assign_tmp" >&2
+  exit 1
+fi
+
+assign_body=$(jq -n \
+  --arg id1 "$tag_id" \
+  --arg id2 "$tag_id_alt" \
+  '{tagIds: [($id1|tonumber), ($id2|tonumber)]}')
 
 assign_tmp=$(mktemp)
 cleanup_files+=("$assign_tmp")
@@ -163,7 +235,7 @@ assign_status=$(perform_request "$assign_tmp" \
   --max-time "$POST_TIMEOUT" \
   -H 'Content-Type: application/json' \
   -X POST "$BASE_URL/api/links/${link_id}/tags" \
-  -d "$tag_body")
+  -d "$assign_body")
 
 if [[ "$assign_status" != "201" ]]; then
   log_error "Unexpected tag assignment response" "status=${assign_status}"
@@ -173,7 +245,40 @@ if [[ "$assign_status" != "201" ]]; then
   exit 1
 fi
 
-log_info "Tag assigned" "link=${link_id}" "tag=${TAG_NAME}"
+if ! jq -e --arg id1 "$tag_id" --arg id2 "$tag_id_alt" \
+  '([.tags[].id] | sort == [($id1|tonumber), ($id2|tonumber)])' \
+  "$assign_tmp" >/dev/null 2>&1; then
+  log_error "Unexpected tag assignment payload"
+  cat "$assign_tmp" >&2
+  exit 1
+fi
+
+assign_tmp_repeat=$(mktemp)
+cleanup_files+=("$assign_tmp_repeat")
+
+assign_status_repeat=$(perform_request "$assign_tmp_repeat" \
+  --max-time "$POST_TIMEOUT" \
+  -H 'Content-Type: application/json' \
+  -X POST "$BASE_URL/api/links/${link_id}/tags" \
+  -d "$assign_body")
+
+if [[ "$assign_status_repeat" != "201" && "$assign_status_repeat" != "200" ]]; then
+  log_error "Unexpected repeat tag assignment response" "status=${assign_status_repeat}"
+  if [[ -s "$assign_tmp_repeat" ]]; then
+    cat "$assign_tmp_repeat" >&2
+  fi
+  exit 1
+fi
+
+if ! jq -e --arg id1 "$tag_id" --arg id2 "$tag_id_alt" \
+  '([.tags[].id] | sort == [($id1|tonumber), ($id2|tonumber)])' \
+  "$assign_tmp_repeat" >/dev/null 2>&1; then
+  log_error "Repeat tag assignment not idempotent"
+  cat "$assign_tmp_repeat" >&2
+  exit 1
+fi
+
+log_info "Tags assigned" "link=${link_id}" "tags=${TAG_NAME},${TAG_NAME_ALT}"
 
 tag_query_tmp=$(mktemp)
 cleanup_files+=("$tag_query_tmp")
@@ -181,7 +286,7 @@ cleanup_files+=("$tag_query_tmp")
 tag_query_status=$(perform_request "$tag_query_tmp" \
   --max-time "$GET_TIMEOUT" \
   -G "$BASE_URL$GET_PATH" \
-  --data-urlencode "tags=${TAG_NAME}" \
+  --data-urlencode "tags=${TAG_NAME},${TAG_NAME_ALT}" \
   --data-urlencode 'limit=5')
 
 if [[ "$tag_query_status" != "200" ]]; then
@@ -200,7 +305,7 @@ if ! jq -e --arg id "$link_id" '.items[] | select(.id == $id)' "$tag_query_tmp" 
   exit 1
 fi
 
-log_info "Tag-filtered query succeeded" "tag=${TAG_NAME}"
+log_info "Tag-filtered query succeeded" "tags=${TAG_NAME},${TAG_NAME_ALT}"
 
 highlight_tmp=$(mktemp)
 cleanup_files+=("$highlight_tmp")
