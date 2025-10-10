@@ -218,6 +218,35 @@ func TestHandleCreateTag(t *testing.T) {
 	}
 }
 
+func TestHandleCreateTagDuplicate(t *testing.T) {
+	t.Parallel()
+
+	queries := &mockQueries{
+		getTagByNameFn: func(ctx context.Context, name string) (db.Tag, error) {
+			if name != "alpha" {
+				t.Fatalf("unexpected tag name lookup: %s", name)
+			}
+			return db.Tag{ID: 1, Name: name}, nil
+		},
+	}
+
+	srv := &Server{cfg: config.Config{}, queries: queries, metrics: newTestMetrics()}
+	e := echo.New()
+	srv.RegisterRoutes(e)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/tags", strings.NewReader(`{"name":"alpha"}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected status %d, got %d", http.StatusConflict, rec.Code)
+	}
+	if queries.createTagCalled {
+		t.Fatalf("expected CreateTag not to be called")
+	}
+}
+
 func TestHandleListTags(t *testing.T) {
 	t.Parallel()
 
@@ -598,6 +627,7 @@ type mockQueries struct {
 	deleteHighlightFn      func(context.Context, pgtype.UUID) error
 
 	createLinkCalled      bool
+	createTagCalled       bool
 	createHighlightCalled bool
 }
 
@@ -638,6 +668,7 @@ func (m *mockQueries) ListTags(ctx context.Context) ([]db.Tag, error) {
 }
 
 func (m *mockQueries) CreateTag(ctx context.Context, name string) (db.Tag, error) {
+	m.createTagCalled = true
 	if m.createTagFn == nil {
 		return db.Tag{}, fmt.Errorf("unexpected CreateTag call")
 	}

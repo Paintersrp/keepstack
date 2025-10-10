@@ -146,7 +146,7 @@ tag_status=$(perform_request "$tag_tmp" \
   -X POST "$BASE_URL/api/tags" \
   -d "$tag_body")
 
-if [[ "$tag_status" != "201" && "$tag_status" != "200" ]]; then
+if [[ "$tag_status" != "201" && "$tag_status" != "200" && "$tag_status" != "409" ]]; then
   log_error "Unexpected tag response" "status=${tag_status}"
   if [[ -s "$tag_tmp" ]]; then
     cat "$tag_tmp" >&2
