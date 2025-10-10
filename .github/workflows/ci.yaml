@@ -25,8 +25,16 @@ jobs:
         run: go test ./...
         working-directory: apps/api
 
+      - name: Run API vet
+        run: go vet ./...
+        working-directory: apps/api
+
       - name: Run worker tests
         run: go test ./...
+        working-directory: apps/worker
+
+      - name: Run worker vet
+        run: go vet ./...
         working-directory: apps/worker
 
       - name: Set up Node.js
@@ -36,6 +44,10 @@ jobs:
 
       - name: Install web dependencies
         run: npm ci
+        working-directory: apps/web
+
+      - name: Run web tests
+        run: npm run test -- --run
         working-directory: apps/web
 
       - name: Build web assets
@@ -95,7 +107,9 @@ jobs:
         run: echo "Web image digest: ${{ steps.build_web.outputs.digest }}"
 
       - name: Helm lint
-        run: helm lint deploy/charts/keepstack
+        run: |
+          helm lint deploy/charts/keepstack
+          helm lint deploy/charts/keepstack --set digest.enabled=true
 
       - name: Configure kubeconfig
         if: ${{ secrets.KUBECONFIG != '' }}
@@ -126,4 +140,4 @@ jobs:
 
       - name: Run smoke tests
         if: ${{ secrets.KUBECONFIG != '' }}
-        run: just smoke
+        run: just smoke-v02
