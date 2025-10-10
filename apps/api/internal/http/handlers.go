@@ -168,11 +168,11 @@ type tagResponse struct {
 }
 
 type highlightResponse struct {
-	ID         string    `json:"id"`
-	Quote      string    `json:"quote"`
-	Annotation *string   `json:"annotation,omitempty"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	ID        string    `json:"id"`
+	Text      string    `json:"text"`
+	Note      *string   `json:"note,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type listLinksResponse struct {
@@ -207,8 +207,8 @@ type linkTagsRequest struct {
 }
 
 type highlightRequest struct {
-	Quote      string  `json:"quote"`
-	Annotation *string `json:"annotation"`
+	Text string  `json:"text"`
+	Note *string `json:"note"`
 }
 
 func (s *Server) handleCreateLink(c echo.Context) error {
@@ -660,7 +660,7 @@ func (s *Server) handleCreateHighlight(c echo.Context) error {
 		return c.JSON(stdhttp.StatusBadRequest, map[string]string{"error": "invalid payload"})
 	}
 
-	quote, annotation, err := validateHighlightPayload(req)
+	text, note, err := validateHighlightPayload(req)
 	if err != nil {
 		s.metrics.HighlightCreateFailure.Inc()
 		return c.JSON(stdhttp.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -672,17 +672,17 @@ func (s *Server) handleCreateHighlight(c echo.Context) error {
 		return c.JSON(stdhttp.StatusTooManyRequests, map[string]string{"error": "highlight rate limit exceeded"})
 	}
 
-	annotationText := pgtype.Text{}
-	if annotation != nil {
-		annotationText = pgtype.Text{String: *annotation, Valid: true}
+	noteText := pgtype.Text{}
+	if note != nil {
+		noteText = pgtype.Text{String: *note, Valid: true}
 	}
 
 	ctx := c.Request().Context()
 	start := time.Now()
 	highlight, err := s.queries.CreateHighlight(ctx, db.CreateHighlightParams{
-		LinkID:     link.ID,
-		Quote:      quote,
-		Annotation: annotationText,
+		LinkID: link.ID,
+		Text:   text,
+		Note:   noteText,
 	})
 	if err != nil {
 		s.metrics.HighlightCreateFailure.Inc()
@@ -718,22 +718,22 @@ func (s *Server) handleUpdateHighlight(c echo.Context) error {
 		return c.JSON(stdhttp.StatusBadRequest, map[string]string{"error": "invalid payload"})
 	}
 
-	quote, annotation, err := validateHighlightPayload(req)
+	text, note, err := validateHighlightPayload(req)
 	if err != nil {
 		s.metrics.HighlightUpdateFailure.Inc()
 		return c.JSON(stdhttp.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
-	annotationText := pgtype.Text{}
-	if annotation != nil {
-		annotationText = pgtype.Text{String: *annotation, Valid: true}
+	noteText := pgtype.Text{}
+	if note != nil {
+		noteText = pgtype.Text{String: *note, Valid: true}
 	}
 
 	ctx := c.Request().Context()
 	highlight, err := s.queries.UpdateHighlight(ctx, db.UpdateHighlightParams{
-		Quote:      quote,
-		Annotation: annotationText,
-		ID:         uuidToPg(highlightID),
+		Text: text,
+		Note: noteText,
+		ID:   uuidToPg(highlightID),
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -951,45 +951,45 @@ func (s *Server) setLinkTags(ctx context.Context, linkID uuid.UUID, ids []int32)
 }
 
 const (
-	maxHighlightQuoteLength      = 2000
-	maxHighlightAnnotationLength = 5000
+	maxHighlightTextLength = 2000
+	maxHighlightNoteLength = 5000
 )
 
 func validateHighlightPayload(req highlightRequest) (string, *string, error) {
-	quote := strings.TrimSpace(req.Quote)
-	if quote == "" {
-		return "", nil, fmt.Errorf("quote is required")
+	text := strings.TrimSpace(req.Text)
+	if text == "" {
+		return "", nil, fmt.Errorf("text is required")
 	}
-	if utf8.RuneCountInString(quote) > maxHighlightQuoteLength {
-		return "", nil, fmt.Errorf("quote exceeds maximum length")
+	if utf8.RuneCountInString(text) > maxHighlightTextLength {
+		return "", nil, fmt.Errorf("text exceeds maximum length")
 	}
 
-	var annotationPtr *string
-	if req.Annotation != nil {
-		trimmed := strings.TrimSpace(*req.Annotation)
+	var notePtr *string
+	if req.Note != nil {
+		trimmed := strings.TrimSpace(*req.Note)
 		if trimmed != "" {
-			if utf8.RuneCountInString(trimmed) > maxHighlightAnnotationLength {
-				return "", nil, fmt.Errorf("annotation exceeds maximum length")
+			if utf8.RuneCountInString(trimmed) > maxHighlightNoteLength {
+				return "", nil, fmt.Errorf("note exceeds maximum length")
 			}
-			annotationPtr = &trimmed
+			notePtr = &trimmed
 		}
 	}
 
-	return quote, annotationPtr, nil
+	return text, notePtr, nil
 }
 
 func toHighlightResponse(item db.Highlight) highlightResponse {
-	var annotation *string
+	var note *string
 	if item.Annotation.Valid {
 		val := item.Annotation.String
-		annotation = &val
+		note = &val
 	}
 	return highlightResponse{
-		ID:         uuidFromPg(item.ID).String(),
-		Quote:      item.Quote,
-		Annotation: annotation,
-		CreatedAt:  item.CreatedAt.Time,
-		UpdatedAt:  item.UpdatedAt.Time,
+		ID:        uuidFromPg(item.ID).String(),
+		Text:      item.Quote,
+		Note:      note,
+		CreatedAt: item.CreatedAt.Time,
+		UpdatedAt: item.UpdatedAt.Time,
 	}
 }
 
@@ -1121,11 +1121,11 @@ func extractStringSlice(value interface{}) []string {
 }
 
 type highlightPayload struct {
-	ID         string    `json:"id"`
-	Quote      string    `json:"quote"`
-	Annotation *string   `json:"annotation"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	ID        string    `json:"id"`
+	Text      string    `json:"text"`
+	Note      *string   `json:"note"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func decodeHighlights(data []byte) ([]highlightResponse, error) {
@@ -1142,11 +1142,11 @@ func decodeHighlights(data []byte) ([]highlightResponse, error) {
 	highlights := make([]highlightResponse, 0, len(raw))
 	for _, item := range raw {
 		highlights = append(highlights, highlightResponse{
-			ID:         item.ID,
-			Quote:      item.Quote,
-			Annotation: item.Annotation,
-			CreatedAt:  item.CreatedAt,
-			UpdatedAt:  item.UpdatedAt,
+			ID:        item.ID,
+			Text:      item.Text,
+			Note:      item.Note,
+			CreatedAt: item.CreatedAt,
+			UpdatedAt: item.UpdatedAt,
 		})
 	}
 	return highlights, nil

@@ -90,18 +90,18 @@ RETURNING id, link_id, quote, annotation, created_at, updated_at
 `
 
 type CreateHighlightParams struct {
-	ID         interface{}
-	LinkID     pgtype.UUID
-	Quote      string
-	Annotation pgtype.Text
+	ID     interface{}
+	LinkID pgtype.UUID
+	Text   string
+	Note   pgtype.Text
 }
 
 func (q *Queries) CreateHighlight(ctx context.Context, arg CreateHighlightParams) (Highlight, error) {
 	row := q.db.QueryRow(ctx, createHighlight,
 		arg.ID,
 		arg.LinkID,
-		arg.Quote,
-		arg.Annotation,
+		arg.Text,
+		arg.Note,
 	)
 	var i Highlight
 	err := row.Scan(
@@ -332,8 +332,8 @@ LEFT JOIN LATERAL (
                json_build_object(
                    'id', h.id,
                    'link_id', h.link_id,
-                   'quote', h.quote,
-                   'annotation', h.annotation,
+                  'text', h.quote,
+                  'note', h.annotation,
                    'created_at', h.created_at,
                    'updated_at', h.updated_at
                )
@@ -521,13 +521,13 @@ RETURNING id, link_id, quote, annotation, created_at, updated_at
 `
 
 type UpdateHighlightParams struct {
-	Quote      string
-	Annotation pgtype.Text
-	ID         pgtype.UUID
+	Text string
+	Note pgtype.Text
+	ID   pgtype.UUID
 }
 
 func (q *Queries) UpdateHighlight(ctx context.Context, arg UpdateHighlightParams) (Highlight, error) {
-	row := q.db.QueryRow(ctx, updateHighlight, arg.Quote, arg.Annotation, arg.ID)
+	row := q.db.QueryRow(ctx, updateHighlight, arg.Text, arg.Note, arg.ID)
 	var i Highlight
 	err := row.Scan(
 		&i.ID,

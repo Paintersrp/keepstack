@@ -56,8 +56,8 @@ LEFT JOIN LATERAL (
                json_build_object(
                    'id', h.id,
                    'link_id', h.link_id,
-                   'quote', h.quote,
-                   'annotation', h.annotation,
+                  'text', h.quote,
+                  'note', h.annotation,
                    'created_at', h.created_at,
                    'updated_at', h.updated_at
                )
@@ -205,15 +205,15 @@ INSERT INTO highlights (
 VALUES (
     COALESCE(sqlc.narg('id'), gen_random_uuid()),
     sqlc.arg('link_id'),
-    sqlc.arg('quote'),
-    sqlc.narg('annotation')
+    sqlc.arg('text'),
+    sqlc.narg('note')
 )
 RETURNING id, link_id, quote, annotation, created_at, updated_at;
 
 -- name: UpdateHighlight :one
 UPDATE highlights
-SET quote = sqlc.arg('quote'),
-    annotation = sqlc.narg('annotation'),
+SET quote = sqlc.arg('text'),
+    annotation = sqlc.narg('note'),
     updated_at = NOW()
 WHERE id = sqlc.arg('id')
 RETURNING id, link_id, quote, annotation, created_at, updated_at;
