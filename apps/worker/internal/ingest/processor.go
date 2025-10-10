@@ -49,9 +49,9 @@ func (p *Processor) Process(ctx context.Context, linkID uuid.UUID) error {
 		p.metrics.LangDetectLatency.Observe(diagnostics.LangDetectDuration.Seconds())
 	}
 	if diagnostics.LangDetected {
-		p.metrics.LangDetectSuccess.WithLabelValues(article.Language).Inc()
+		p.metrics.LangDetect.WithLabelValues(article.Language).Inc()
 	} else if diagnostics.LangDetectDuration > 0 {
-		p.metrics.LangDetectFailure.Inc()
+		p.metrics.LangDetectErrors.Inc()
 	}
 
 	persistStart := time.Now()
