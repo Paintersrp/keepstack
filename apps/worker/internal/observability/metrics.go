@@ -1,50 +1,76 @@
 package observability
 
 import (
-    "github.com/prometheus/client_golang/prometheus"
-    "github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
 // Metrics captures Prometheus collectors for the worker.
 type Metrics struct {
-    JobsProcessed prometheus.Counter
-    JobsFailed    prometheus.Counter
-    FetchLatency  prometheus.Histogram
-    ParseLatency  prometheus.Histogram
-    PersistLatency prometheus.Histogram
+	JobsProcessed     prometheus.Counter
+	JobsFailed        prometheus.Counter
+	FetchLatency      prometheus.Histogram
+	ParseLatency      prometheus.Histogram
+	PersistLatency    prometheus.Histogram
+	ParseFailures     prometheus.Counter
+	LangDetectLatency prometheus.Histogram
+	LangDetectSuccess *prometheus.CounterVec
+	LangDetectFailure prometheus.Counter
 }
 
 // NewMetrics registers worker metrics.
 func NewMetrics() *Metrics {
-    const namespace = "keepstack_worker"
-    return &Metrics{
-        JobsProcessed: promauto.NewCounter(prometheus.CounterOpts{
-            Namespace: namespace,
-            Name:      "jobs_processed_total",
-            Help:      "Number of link ingestion jobs successfully processed.",
-        }),
-        JobsFailed: promauto.NewCounter(prometheus.CounterOpts{
-            Namespace: namespace,
-            Name:      "jobs_failed_total",
-            Help:      "Number of link ingestion jobs that failed.",
-        }),
-        FetchLatency: promauto.NewHistogram(prometheus.HistogramOpts{
-            Namespace: namespace,
-            Name:      "fetch_duration_seconds",
-            Help:      "Time spent fetching URLs.",
-            Buckets:   prometheus.DefBuckets,
-        }),
-        ParseLatency: promauto.NewHistogram(prometheus.HistogramOpts{
-            Namespace: namespace,
-            Name:      "parse_duration_seconds",
-            Help:      "Time spent parsing fetched HTML.",
-            Buckets:   prometheus.DefBuckets,
-        }),
-        PersistLatency: promauto.NewHistogram(prometheus.HistogramOpts{
-            Namespace: namespace,
-            Name:      "persist_duration_seconds",
-            Help:      "Time spent storing parsed content.",
-            Buckets:   prometheus.DefBuckets,
-        }),
-    }
+	const namespace = "keepstack_worker"
+	const langNamespace = "keepstack_worker_lang_detect"
+	return &Metrics{
+		JobsProcessed: promauto.NewCounter(prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "jobs_processed_total",
+			Help:      "Number of link ingestion jobs successfully processed.",
+		}),
+		JobsFailed: promauto.NewCounter(prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "jobs_failed_total",
+			Help:      "Number of link ingestion jobs that failed.",
+		}),
+		FetchLatency: promauto.NewHistogram(prometheus.HistogramOpts{
+			Namespace: namespace,
+			Name:      "fetch_duration_seconds",
+			Help:      "Time spent fetching URLs.",
+			Buckets:   prometheus.DefBuckets,
+		}),
+		ParseLatency: promauto.NewHistogram(prometheus.HistogramOpts{
+			Namespace: namespace,
+			Name:      "parse_duration_seconds",
+			Help:      "Time spent parsing fetched HTML.",
+			Buckets:   prometheus.DefBuckets,
+		}),
+		PersistLatency: promauto.NewHistogram(prometheus.HistogramOpts{
+			Namespace: namespace,
+			Name:      "persist_duration_seconds",
+			Help:      "Time spent storing parsed content.",
+			Buckets:   prometheus.DefBuckets,
+		}),
+		ParseFailures: promauto.NewCounter(prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "parse_failed_total",
+			Help:      "Number of parse attempts that resulted in errors.",
+		}),
+		LangDetectLatency: promauto.NewHistogram(prometheus.HistogramOpts{
+			Namespace: langNamespace,
+			Name:      "duration_seconds",
+			Help:      "Time spent detecting article language.",
+			Buckets:   prometheus.DefBuckets,
+		}),
+		LangDetectSuccess: promauto.NewCounterVec(prometheus.CounterOpts{
+			Namespace: langNamespace,
+			Name:      "success_total",
+			Help:      "Number of successful language detections grouped by ISO code.",
+		}, []string{"lang"}),
+		LangDetectFailure: promauto.NewCounter(prometheus.CounterOpts{
+			Namespace: langNamespace,
+			Name:      "failure_total",
+			Help:      "Number of language detection attempts that failed reliability checks.",
+		}),
+	}
 }

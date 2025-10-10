@@ -3,9 +3,12 @@ package ingest
 import (
 	"bytes"
 	"fmt"
+	"net/url"
 	"strings"
+	"time"
 
-	"github.com/PuerkitoBio/goquery"
+	"github.com/abadojack/whatlanggo"
+	readability "github.com/go-shiori/go-readability"
 	"github.com/microcosm-cc/bluemonday"
 )
 
@@ -19,51 +22,84 @@ type Article struct {
 	Language    string
 }
 
+// ParseDiagnostics captures metadata generated while parsing content.
+type ParseDiagnostics struct {
+	LangDetectDuration time.Duration
+	LangDetected       bool
+}
+
 // Parse extracts readable content from HTML bytes.
-func Parse(targetURL string, html []byte) (Article, error) {
-	_ = targetURL
+func Parse(targetURL string, html []byte) (Article, ParseDiagnostics, error) {
 	reader := bytes.NewReader(html)
-	doc, err := goquery.NewDocumentFromReader(reader)
+
+	var pageURL *url.URL
+	if targetURL != "" {
+		if parsed, err := url.Parse(targetURL); err == nil {
+			pageURL = parsed
+		}
+	}
+
+	extracted, err := readability.FromReader(reader, pageURL)
 	if err != nil {
-		return Article{}, fmt.Errorf("parse document: %w", err)
+		return Article{}, ParseDiagnostics{}, fmt.Errorf("readability extract: %w", err)
 	}
 
-	doc.Find("script, style, noscript").Remove()
-
-	title := strings.TrimSpace(doc.Find("title").First().Text())
-	if title == "" {
-		title = strings.TrimSpace(doc.Find("meta[property='og:title']").AttrOr("content", ""))
+	title := strings.TrimSpace(extracted.Title)
+	byline := strings.TrimSpace(extracted.Byline)
+	text := strings.TrimSpace(extracted.TextContent)
+	cleanedHTML := sanitizeHTML(extracted.Content)
+	if cleanedHTML == "" {
+		cleanedHTML = sanitizeHTML(string(html))
+	}
+	if text == "" {
+		text = strings.TrimSpace(bluemonday.StrictPolicy().Sanitize(string(html)))
 	}
 
-	byline := strings.TrimSpace(doc.Find("meta[name='author']").AttrOr("content", ""))
-	if byline == "" {
-		byline = strings.TrimSpace(doc.Find("meta[property='article:author']").AttrOr("content", ""))
-	}
-	if byline == "" {
-		byline = strings.TrimSpace(doc.Find("[itemprop='author'], .byline, .author").First().Text())
-	}
-	bodySelection := doc.Find("body")
-	if bodySelection.Length() == 0 {
-		bodySelection = doc.Selection
-	}
+	lang, detectDuration, langDetected := detectLanguage(text)
 
-	text := strings.Join(strings.Fields(bodySelection.Text()), " ")
-
-	sanitizer := bluemonday.StrictPolicy()
-	sanitizedHTML := sanitizer.SanitizeReader(bytes.NewReader(html))
-	cleanedBuf := new(bytes.Buffer)
-	if _, err := cleanedBuf.ReadFrom(sanitizedHTML); err != nil {
-		return Article{}, fmt.Errorf("sanitize html: %w", err)
-	}
-
-	lang := strings.TrimSpace(doc.Find("html").AttrOr("lang", ""))
-
-	return Article{
+	article := Article{
 		Title:       title,
 		Byline:      byline,
 		TextContent: text,
-		HTMLContent: cleanedBuf.String(),
+		HTMLContent: cleanedHTML,
 		WordCount:   len(strings.Fields(text)),
 		Language:    lang,
-	}, nil
+	}
+
+	diagnostics := ParseDiagnostics{
+		LangDetectDuration: detectDuration,
+		LangDetected:       langDetected,
+	}
+
+	return article, diagnostics, nil
+}
+
+func detectLanguage(text string) (string, time.Duration, bool) {
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return "", 0, false
+	}
+
+	start := time.Now()
+	info := whatlanggo.Detect(trimmed)
+	duration := time.Since(start)
+
+	if !info.IsReliable() {
+		return "", duration, false
+	}
+
+	lang := info.Lang.Iso6391()
+	if lang == "" {
+		lang = whatlanggo.LangToString(info.Lang)
+	}
+
+	lang = strings.TrimSpace(lang)
+
+	return lang, duration, lang != ""
+}
+
+func sanitizeHTML(raw string) string {
+	policy := bluemonday.UGCPolicy()
+	sanitized := policy.Sanitize(raw)
+	return strings.TrimSpace(sanitized)
 }
