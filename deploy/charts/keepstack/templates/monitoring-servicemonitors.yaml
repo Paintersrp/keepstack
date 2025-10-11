@@ -7,7 +7,9 @@ metadata:
   labels:
     {{- include "keepstack.labels" . | nindent 4 }}
     app.kubernetes.io/component: api
+    {{- if .Values.observability.prometheusRelease }}
     release: {{ .Values.observability.prometheusRelease }}
+    {{- end }}
 spec:
   jobLabel: app.kubernetes.io/component
   namespaceSelector:
@@ -29,7 +31,9 @@ metadata:
   labels:
     {{- include "keepstack.labels" . | nindent 4 }}
     app.kubernetes.io/component: worker
+    {{- if .Values.observability.prometheusRelease }}
     release: {{ .Values.observability.prometheusRelease }}
+    {{- end }}
 spec:
   jobLabel: app.kubernetes.io/component
   namespaceSelector:
