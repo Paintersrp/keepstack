@@ -9,7 +9,7 @@ import (
 type Metrics struct {
 	JobsProcessed     prometheus.Counter
 	JobsFailed        prometheus.Counter
-	JobsInProgress    prometheus.Gauge
+	JobsInFlight      prometheus.Gauge
 	FetchLatency      prometheus.Histogram
 	ParseLatency      prometheus.Histogram
 	PersistLatency    prometheus.Histogram
@@ -33,9 +33,9 @@ func NewMetrics() *Metrics {
 			Name:      "jobs_failed_total",
 			Help:      "Number of link ingestion jobs that failed.",
 		}),
-		JobsInProgress: promauto.NewGauge(prometheus.GaugeOpts{
+		JobsInFlight: promauto.NewGauge(prometheus.GaugeOpts{
 			Namespace: namespace,
-			Name:      "jobs_in_progress",
+			Name:      "jobs_in_flight",
 			Help:      "Number of link ingestion jobs currently being processed.",
 		}),
 		FetchLatency: promauto.NewHistogram(prometheus.HistogramOpts{
