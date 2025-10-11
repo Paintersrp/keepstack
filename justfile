@@ -1,6 +1,6 @@
 set shell := ["bash", "-cu"]
 
-REGISTRY := env_var_or_default("REGISTRY", "ghcr.io/YOUR_GH_USERNAME_OR_ORG")
+REGISTRY := env_var_or_default("REGISTRY", "ghcr.io/Paintersrp")
 TAG := env_var_or_default("TAG", "sha-$(git rev-parse --short HEAD)")
 NAMESPACE := "keepstack"
 CHART := "deploy/charts/keepstack"
