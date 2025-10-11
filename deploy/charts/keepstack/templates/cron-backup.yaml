@@ -38,7 +38,7 @@ spec:
                   value: {{ .Values.backup.retention | quote }}
                 - name: BACKUP_STORAGE
                   value: {{ .Values.backup.storage.kind | default "pvc" | quote }}
-                {{- if eq (.Values.backup.storage.kind | default "pvc") "s3" }}
+                {{ if eq (.Values.backup.storage.kind | default "pvc") "s3" }}
                 - name: BACKUP_KEEP_LOCAL
                   value: {{ .Values.backup.keepLocal | default "false" | quote }}
                 - name: BACKUP_S3_BUCKET
@@ -49,7 +49,7 @@ spec:
                   value: {{ .Values.backup.storage.s3.endpoint | quote }}
                 - name: BACKUP_S3_PREFIX
                   value: {{ .Values.backup.storage.s3.prefix | quote }}
-                {{- if .Values.backup.storage.s3.credentialsSecret }}
+                {{ if .Values.backup.storage.s3.credentialsSecret }}
                 - name: BACKUP_S3_ACCESS_KEY
                   valueFrom:
                     secretKeyRef:
@@ -60,11 +60,11 @@ spec:
                     secretKeyRef:
                       name: {{ .Values.backup.storage.s3.credentialsSecret }}
                       key: {{ .Values.backup.storage.s3.secretKeyKey | default "secretKey" }}
-                {{- end }}
-                {{- else }}
+                {{ end }}
+                {{ else }}
                 - name: BACKUP_KEEP_LOCAL
                   value: "true"
-                {{- end }}
+                {{ end }}
               volumeMounts:
                 - name: backup-data
                   mountPath: /backups
