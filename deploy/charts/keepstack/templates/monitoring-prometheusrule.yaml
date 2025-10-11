@@ -7,7 +7,9 @@ metadata:
   labels:
     {{- include "keepstack.labels" . | nindent 4 }}
     app.kubernetes.io/component: monitoring
+    {{- if .Values.observability.prometheusRelease }}
     release: {{ .Values.observability.prometheusRelease }}
+    {{- end }}
 spec:
   groups:
     - name: keepstack.api
