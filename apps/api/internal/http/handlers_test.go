@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -11,7 +12,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/labstack/echo/v4"
 	"github.com/prometheus/client_golang/prometheus"
@@ -877,6 +880,7 @@ func newTestMetrics() *observability.Metrics {
 		LinkListSuccess:            prometheus.NewCounter(prometheus.CounterOpts{Name: "test_link_list_success_total", Help: ""}),
 		LinkListFailure:            prometheus.NewCounter(prometheus.CounterOpts{Name: "test_link_list_failure_total", Help: ""}),
 		ReadinessFailure:           prometheus.NewCounter(prometheus.CounterOpts{Name: "test_readiness_failure_total", Help: ""}),
+		ReadinessMigrationGap:      prometheus.NewCounter(prometheus.CounterOpts{Name: "test_readiness_migration_gap_total", Help: ""}),
 		TagCreateSuccess:           prometheus.NewCounter(prometheus.CounterOpts{Name: "test_tag_create_success_total", Help: ""}),
 		TagCreateFailure:           prometheus.NewCounter(prometheus.CounterOpts{Name: "test_tag_create_failure_total", Help: ""}),
 		TagListSuccess:             prometheus.NewCounter(prometheus.CounterOpts{Name: "test_tag_list_success_total", Help: ""}),
@@ -907,4 +911,51 @@ func newTestMetrics() *observability.Metrics {
 func rateLimiterZero() *rate.Limiter {
 	limiter := rate.NewLimiter(rate.Every(time.Hour), 0)
 	return limiter
+}
+
+func TestClassifyReadinessError(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		err              error
+		wantMessage      string
+		wantMigrationGap bool
+	}{
+		"undefined table": {
+			err: &pgconn.PgError{
+				Code:      pgerrcode.UndefinedTable,
+				TableName: "highlights",
+			},
+			wantMessage:      "database schema missing table \"highlights\"",
+			wantMigrationGap: true,
+		},
+		"undefined column": {
+			err: &pgconn.PgError{
+				Code:       pgerrcode.UndefinedColumn,
+				TableName:  "archives",
+				ColumnName: "title",
+			},
+			wantMessage:      "database schema missing column \"title\" on table \"archives\"",
+			wantMigrationGap: true,
+		},
+		"generic error": {
+			err:              errors.New("boom"),
+			wantMessage:      "boom",
+			wantMigrationGap: false,
+		},
+	}
+
+	for name, tc := range tests {
+		tc := tc
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			msg, migrationGap := classifyReadinessError(tc.err)
+			if msg != tc.wantMessage {
+				t.Fatalf("unexpected message: got %q want %q", msg, tc.wantMessage)
+			}
+			if migrationGap != tc.wantMigrationGap {
+				t.Fatalf("unexpected migration gap flag: got %t want %t", migrationGap, tc.wantMigrationGap)
+			}
+		})
+	}
 }

@@ -16,7 +16,9 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
@@ -113,21 +115,100 @@ func (s *Server) handleHealthz(c echo.Context) error {
 	ctx, cancel := context.WithTimeout(c.Request().Context(), 2*time.Second)
 	defer cancel()
 
-	if _, err := s.pool.Exec(ctx, "SELECT 1"); err != nil {
-		s.metrics.ReadinessFailure.Inc()
-		c.Logger().Errorf("readiness check: SELECT 1 failed: %v", err)
-		return c.JSON(stdhttp.StatusServiceUnavailable, map[string]string{"status": "unhealthy"})
+	checks := []struct {
+		name string
+		run  func(context.Context) error
+	}{
+		{
+			name: "postgres connectivity",
+			run: func(ctx context.Context) error {
+				_, err := s.pool.Exec(ctx, "SELECT 1")
+				return err
+			},
+		},
+		{
+			name: "links table",
+			run: func(ctx context.Context) error {
+				var count int
+				if err := s.pool.QueryRow(ctx, "SELECT COUNT(1) FROM links").Scan(&count); err != nil {
+					return err
+				}
+				return nil
+			},
+		},
+		{
+			name: "archives metadata columns",
+			run: func(ctx context.Context) error {
+				return runReadinessQuery(ctx, s.pool, "SELECT title, byline, lang, word_count FROM archives LIMIT 0")
+			},
+		},
+		{
+			name: "highlights table",
+			run: func(ctx context.Context) error {
+				return runReadinessQuery(ctx, s.pool, "SELECT 1 FROM highlights LIMIT 1")
+			},
+		},
 	}
 
-	var count int
-	if err := s.pool.QueryRow(ctx, "SELECT COUNT(1) FROM links").Scan(&count); err != nil {
-		s.metrics.ReadinessFailure.Inc()
-		c.Logger().Errorf("readiness check: links table query failed: %v", err)
-		return c.JSON(stdhttp.StatusServiceUnavailable, map[string]string{"status": "unhealthy"})
+	for _, check := range checks {
+		if err := check.run(ctx); err != nil {
+			s.metrics.ReadinessFailure.Inc()
+
+			message, migrationGap := classifyReadinessError(err)
+			if migrationGap {
+				s.metrics.ReadinessMigrationGap.Inc()
+			}
+
+			c.Logger().Errorf("readiness check: %s failed: %v", check.name, err)
+
+			response := map[string]string{
+				"status": "unhealthy",
+				"error":  message,
+			}
+			if migrationGap {
+				response["hint"] = "apply outstanding database migrations"
+			}
+
+			return c.JSON(stdhttp.StatusServiceUnavailable, response)
+		}
 	}
-	_ = count
 
 	return c.JSON(stdhttp.StatusOK, map[string]string{"status": "ok"})
+}
+
+func runReadinessQuery(ctx context.Context, pool *pgxpool.Pool, query string, args ...any) error {
+	rows, err := pool.Query(ctx, query, args...)
+	if err != nil {
+		return err
+	}
+	rows.Close()
+	return rows.Err()
+}
+
+func classifyReadinessError(err error) (string, bool) {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		switch pgErr.Code {
+		case pgerrcode.UndefinedTable:
+			table := pgErr.TableName
+			if table == "" {
+				table = "required"
+			}
+			return fmt.Sprintf("database schema missing table %q", table), true
+		case pgerrcode.UndefinedColumn:
+			column := pgErr.ColumnName
+			if column == "" {
+				column = "required"
+			}
+			table := pgErr.TableName
+			if table != "" {
+				return fmt.Sprintf("database schema missing column %q on table %q", column, table), true
+			}
+			return fmt.Sprintf("database schema missing column %q", column), true
+		}
+	}
+
+	return err.Error(), false
 }
 
 func (s *Server) handleLivez(c echo.Context) error {
