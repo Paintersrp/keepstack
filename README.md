@@ -226,14 +226,14 @@ touching the ingress manifest.
 
 ## Verification checklist
 
-1. `cd apps/api && go test ./...` – API unit tests and new resurfacer logic
+1. `cd apps/api && go test ./...` – API unit tests and resurfacer logic
 2. `cd apps/worker && go test ./...` – ingestion pipeline and queue metrics
-3. `cd apps/web && npm run build` – ensure the updated Suggested filter compiles
+3. `cd apps/web && npm run build` – ensure the Suggested filter compiles
 4. `helm upgrade --install keepstack deploy/charts/keepstack -n keepstack -f deploy/values/dev.yaml --wait`
-5. `just smoke-v02` – populate the system end-to-end
-6. `just dash-grafana` – inspect the Keepstack Overview dashboard
-7. `just backup-now` and `just restore-drill` – validate database backup + restore workflow
-8. `just resurfacer-now` followed by `curl .../api/recommendations` – verify resurfaced items
+5. `just verify-obs` – confirm ServiceMonitor wiring and metrics exposure
+6. `just smoke-v03` – exercise the full v0.3 workflow, including resurfacer automation
+7. `just verify-alerts` – provoke and clear API/worker alerts end-to-end
+8. `just backup-now` and `DST_NS=restore-drill just restore-drill` – validate database backup + restore workflow
 
 Override `digest.schedule` to change when the CronJob fires, update
 `digest.limit` to cap the number of unread links, and set sender/recipient
@@ -272,7 +272,7 @@ values out of Helm overrides.
 
    ```sh
    just seed
-   just smoke-v02
+   just smoke-v03
    ```
 
 7. **Open the app**
@@ -283,11 +283,11 @@ values out of Helm overrides.
 
 ### Smoke test expectations
 
-`just smoke-v02` executes the v0.2 workflow end-to-end: it creates a link, waits for the worker to archive it, exercises tag replacement semantics (including multi-tag AND filtering), and verifies that highlights capture both text and note content. Highlights inherit their source offsets so re-parsed articles can reflow while annotations still render in the original context, and tag updates are idempotent—reposting a tag set overwrites the previous values rather than appending duplicates. The run passes when the tagged link and highlight appear in API results, confirming the API, worker, Postgres, and ingress are all wired together.
+`just smoke-v03` drives the v0.3 verification workflow: it reuses the v0.2 link, tag, and highlight assertions, then checks Prometheus metrics exposure, triggers an on-demand resurfacer Job, and confirms recommendations are returned by the API. The run passes when the original smoke expectations succeed, ServiceMonitors respond, and the resurfacer emits at least one recommendation, proving the API, worker, observability stack, and nightly jobs are operating together.
 
-## Verify v0.2
+## Verify v0.3
 
-Follow the workflow below to exercise the full v0.2 deployment path from cluster bootstrap through smoke testing. It bootstraps a local k3d cluster with ingress-nginx, provisions the shared application secret, deploys the Helm chart, waits for the core workloads to become available, and finally executes both the schema check and smoke test against the ingress endpoint.
+Follow the workflow below to exercise the full v0.3 deployment path, including observability, backups, resurfacing, and alert validation. Start from a clean workstation shell so the helper scripts can source their defaults.
 
 ```sh
 just dev-up
@@ -300,23 +300,78 @@ kubectl -n keepstack create secret generic keepstack-secrets \
   --from-literal=DIGEST_SENDER='Keepstack Digest <digest@keepstack.local>' \
   --from-literal=DIGEST_RECIPIENT='reader@keepstack.local' \
   --from-literal=DIGEST_LIMIT='10' || true
+```
+
+Ensure your values file enables the v0.3 automation before building. The provided `deploy/values/dev.yaml` already sets:
+
+```yaml
+observability:
+  enabled: true
+backup:
+  enabled: true
+resurfacer:
+  enabled: true
+```
+
+With the prerequisites in place, build, push, and deploy the chart:
+
+```sh
 just build
 just push
 just helm-dev
 kubectl -n keepstack wait --for=condition=Available deploy/keepstack-api --timeout=120s
 kubectl -n keepstack wait --for=condition=Available deploy/keepstack-worker --timeout=120s
 kubectl -n keepstack wait --for=condition=Available deploy/keepstack-web --timeout=120s
-just verify-schema
-just smoke-v02
-DIGEST_TEST=1 just smoke-v02
-kubectl -n keepstack describe netpol keepstack-allow-api-to-nats
 ```
 
-The wait commands confirm that each deployment reports an `Available` status before the smoke test runs. If any wait operation times out, inspect the relevant pod logs (for example, `kubectl -n keepstack logs deploy/keepstack-api`) before re-running the workflow.
+Once the core workloads are ready, run the verification commands in order:
 
-`just verify-schema` renders a one-off Kubernetes Job that runs `keepstack cron verify-schema`, ensuring the Postgres schema includes the metadata columns, highlights table, and search triggers expected by the v0.2 release. The job exits non-zero when required objects are missing so pending migrations are surfaced before smoke testing.
+```sh
+just verify-obs
+just smoke-v03
+just verify-alerts
+just backup-now
+DST_NS=keepstack-restore just restore-drill
+```
 
-`just smoke-v02` drives the API/worker/web flow while validating tag replacement, highlight persistence, and digest rendering. Setting `DIGEST_TEST=1` exercises the digest preview mode so the API emits a `log://` fallback email without attempting SMTP delivery.
+Collect the required evidence along the way:
+
+- Capture the **Keepstack Overview** dashboard after `just verify-obs` (`docs/assets/verify-v03-grafana.png`).
+- Grab a Grafana alert panel showing both the firing and recovered states created during `just verify-alerts` (`docs/assets/verify-v03-alerts.png`).
+- Record the successful restore drill output (for example, `kubectl -n keepstack-restore logs job/keepstack-restore`) and archive a screenshot (`docs/assets/verify-v03-restore.png`).
+
+`just verify-obs` confirms the ServiceMonitor resources exist and that both API and worker pods expose the expected Prometheus metrics before any smoke traffic runs. If the script reports missing monitors, re-run `just helm-dev` with `observability.enabled=true` until they appear.
+
+`just smoke-v03` publishes the seed link, validates tags and highlights, verifies that the resurfacer Job completes, and calls `/api/recommendations` to confirm resurfaced items are stored.
+
+`just verify-alerts` temporarily scales NATS to zero, injects API errors, and posts failing worker jobs so the `KeepstackHighErrorRate` and `KeepstackWorkerFailures` alerts fire. It then restores normal traffic and waits for the alerts to return to the `inactive` state.
+
+`just backup-now` triggers the CronJob and waits for the most recent backup Job to complete. Follow it with the restore drill (see below) to practice disaster recovery against a fresh namespace.
+
+`DST_NS=keepstack-restore just restore-drill` copies the newest dump from the source namespace into a clean namespace, rehydrates Postgres, and validates the API before exiting. Override `DST_NS` with a unique suffix per run to avoid name collisions in shared clusters.
+
+If any wait operation times out, inspect the relevant pod logs (for example, `kubectl -n keepstack logs deploy/keepstack-api`) before re-running the workflow.
+
+### Confirming alert fire & recovery
+
+`just verify-alerts` prints `Alert state` lines as it polls Prometheus. Wait for the script to log both `KeepstackHighErrorRate` and `KeepstackWorkerFailures` reaching the `firing` state and then returning to `inactive`. Capture the Grafana **Alerting → Alerts** screen while the alerts are firing and again after they clear to document recovery. The script automatically restores the PrometheusRule configuration and scales NATS back to its original replica count.
+
+### Restore drill in a fresh namespace
+
+The restore helper accepts both source and destination namespaces. Passing a unique `DST_NS` (for example, `DST_NS=keepstack-restore-$(date +%s) just restore-drill`) deletes any existing namespace with that name, recreates it, and installs a database-only release before running the restore Job. When the script finishes, confirm the drill succeeded with `kubectl -n ${DST_NS} get jobs,pods` or by curling `http://${RELEASE_NAME}-api:8080/api/links` inside the namespace. Cleanup happens automatically on the next invocation.
+
+### Optional TLS toggle
+
+To validate TLS ingress changes, toggle the Helm values and run the rollout observer script:
+
+```sh
+helm upgrade --install keepstack deploy/charts/keepstack \
+  -n keepstack -f deploy/values/dev.yaml \
+  --set tls.enabled=true --set tls.issuer=selfsigned --wait
+SMOKE_BASE_URL=https://keepstack.localtest.me KS_NAMESPACE=keepstack scripts/rollout-observe.sh
+```
+
+`scripts/rollout-observe.sh` patches the API deployment to trigger a restart while continuously curling the base URL. Use it to confirm no 5xx responses occur while TLS is enabled, then revert the toggle with `--set tls.enabled=false` for subsequent non-TLS smoke tests.
 
 `kubectl describe netpol keepstack-allow-api-to-nats` surfaces NetworkPolicy status and matching pod selectors. If the smoke test reports `nats:4222` dial errors or `timeout waiting on ack` messages, confirm the policy is present and that both the API and NATS pods carry the expected labels.
 
@@ -347,8 +402,8 @@ With the stack running, install Keepstack using `deploy/values/dev.yaml` (observ
 
 ### Smoke test script usage & troubleshooting
 
-- **Basic usage**: Run `./scripts/smoke-v02.sh` (or `just smoke-v02`) once the Helm release is ready. Override defaults such as `SMOKE_BASE_URL`, `SMOKE_POST_TIMEOUT`, or `SMOKE_POLL_TIMEOUT` to target alternative ingress URLs or tune slow environments.
-- **Digest dry-run**: Export `DIGEST_TEST=1` to trigger the optional digest preview step. When set, `just smoke-v02` defaults `SMTP_URL=log://` so the API logs the rendered email instead of attempting an SMTP delivery.
+- **Basic usage**: Run `just smoke-v03` once the Helm release is ready. Override defaults such as `SMOKE_BASE_URL`, `SMOKE_POST_TIMEOUT`, or `SMOKE_POLL_TIMEOUT` to target alternative ingress URLs or tune slow environments. For a narrower pass that only exercises the legacy flow, call `./scripts/smoke-v02.sh` directly.
+- **Digest dry-run**: Export `DIGEST_TEST=1` to trigger the optional digest preview step. When set, `just smoke-v03` inherits the `log://` SMTP fallback from `smoke-v02` so the API logs the rendered email instead of attempting SMTP delivery.
 - **Ingress routing failures**: If the script reports connection or DNS errors, confirm the ingress controller is ready with `kubectl -n ingress-nginx get pods` and that `/etc/hosts` (or your DNS) resolves `keepstack.localtest.me`.
 - **Pending database migrations**: A `201` POST followed by repeated polling without the link appearing usually indicates the worker cannot finish migrations. Check the Postgres pod logs (`kubectl -n keepstack logs statefulset/keepstack-postgres`) and re-run `helm-dev` after resolving schema issues.
 - **API readiness**: HTTP `5xx` responses or cURL timeouts imply the API deployment is still starting. Readiness now verifies the
