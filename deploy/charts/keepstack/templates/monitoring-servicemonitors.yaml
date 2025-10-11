@@ -14,7 +14,7 @@ spec:
       - {{ include "keepstack.namespace" . }}
   selector:
     matchLabels:
-      app.kubernetes.io/name: {{ include "keepstack.fullname" . }}-api
+      app.kubernetes.io/component: api
   endpoints:
     - port: http
       path: /metrics
@@ -35,7 +35,7 @@ spec:
       - {{ include "keepstack.namespace" . }}
   selector:
     matchLabels:
-      app.kubernetes.io/name: {{ include "keepstack.fullname" . }}-worker
+      app.kubernetes.io/component: worker
   endpoints:
     - port: metrics
       path: /metrics
