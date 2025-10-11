@@ -66,13 +66,17 @@ func main() {
 	store := ingest.NewStore(pool)
 	processor := ingest.NewProcessor(fetcher, store, metrics)
 
+	processJob := func(jobCtx context.Context, linkID uuid.UUID) error {
+		metrics.JobsInFlight.Inc()
+		defer metrics.JobsInFlight.Dec()
+
+		return processor.Process(jobCtx, linkID)
+	}
+
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- subscriber.Listen(ctx, func(jobCtx context.Context, linkID uuid.UUID) error {
-			metrics.JobsInProgress.Inc()
-			defer metrics.JobsInProgress.Dec()
-
-			if err := processor.Process(jobCtx, linkID); err != nil {
+			if err := processJob(jobCtx, linkID); err != nil {
 				metrics.JobsFailed.Inc()
 				return err
 			}
