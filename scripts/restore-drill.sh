@@ -22,7 +22,8 @@ cat <<'INSTRUCTIONS'
      --set api.replicas=0 --set worker.replicas=0 --set web.replicas=0 --wait
 
 5. Run the restore job example:
-   kubectl -n ${NAMESPACE} apply -f deploy/charts/keepstack/templates/job-restore-example.yaml
+   helm template keepstack ${CHART} -n "${NAMESPACE}" -f "${VALUES}" --show-only templates/job-restore-example.yaml \
+     | kubectl -n "${NAMESPACE}" apply -f -
    kubectl -n ${NAMESPACE} wait --for=condition=complete job/keepstack-restore --timeout=180s
 
 6. Re-enable the application:

@@ -158,8 +158,16 @@ kubectl -n keepstack get jobs | grep keepstack-backup-now
 
 To exercise the disaster-recovery drill, run `just restore-drill` and follow the
 annotated steps: uninstall the release, reinstall Postgres only, execute the
-example restore job, then bring the deployments back online. The reusable
-`scripts/restore-db.sh` helper accepts an explicit dump path or automatically
+example restore job, then bring the deployments back online. Step five now
+renders the restore Job with Helm to ensure values overrides are honored before
+applying it:
+
+```sh
+helm template keepstack deploy/charts/keepstack -n "${NAMESPACE}" -f "${VALUES}" \
+  --show-only templates/job-restore-example.yaml | kubectl -n "${NAMESPACE}" apply -f -
+```
+
+The reusable `scripts/restore-db.sh` helper accepts an explicit dump path or automatically
 selects the most recent archive. S3/minio uploads are also supported—configure
 `backup.storage.kind=s3` along with the bucket, endpoint, and access key
 secrets, and the CronJob will stream the compressed dump directly to object
