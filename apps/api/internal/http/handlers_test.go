@@ -96,6 +96,151 @@ func TestHandleCreateLinkInvalidURL(t *testing.T) {
 	}
 }
 
+func TestHandleCreateClaim(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{DevUserID: uuid.MustParse("dddddddd-dddd-dddd-dddd-dddddddddddd")}
+	linkID := uuid.New()
+	claimID := uuid.New()
+	claimedAt := time.Unix(1_700_000_000, 0).UTC()
+
+	queries := &mockQueries{
+		getLinkFn: func(ctx context.Context, id pgtype.UUID) (db.GetLinkRow, error) {
+			if uuidFromPg(id) != linkID {
+				return db.GetLinkRow{}, fmt.Errorf("unexpected link id: %s", uuidFromPg(id))
+			}
+			return db.GetLinkRow{
+				ID:        uuidToPg(linkID),
+				UserID:    uuidToPg(cfg.DevUserID),
+				Url:       "https://example.com",
+				CreatedAt: pgtype.Timestamptz{Time: time.Now(), Valid: true},
+				Favorite:  false,
+			}, nil
+		},
+		createClaimFn: func(ctx context.Context, params db.CreateClaimParams) (db.CreateClaimRow, error) {
+			if uuidFromPg(params.LinkID) != linkID {
+				return db.CreateClaimRow{}, fmt.Errorf("unexpected claim link id: %s", uuidFromPg(params.LinkID))
+			}
+			if uuidFromPg(params.UserID) != cfg.DevUserID {
+				return db.CreateClaimRow{}, fmt.Errorf("unexpected claim user id: %s", uuidFromPg(params.UserID))
+			}
+			return db.CreateClaimRow{
+				ID:        uuidToPg(claimID),
+				LinkID:    params.LinkID,
+				UserID:    params.UserID,
+				ClaimedAt: pgtype.Timestamptz{Time: claimedAt, Valid: true},
+				Inserted:  true,
+			}, nil
+		},
+	}
+
+	srv := &Server{cfg: cfg, queries: queries, metrics: newTestMetrics()}
+	e := echo.New()
+	srv.RegisterRoutes(e)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/claims", strings.NewReader(fmt.Sprintf(`{"link_id":"%s"}`, linkID)))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, rec.Code)
+	}
+	if !queries.createClaimCalled {
+		t.Fatalf("expected CreateClaim to be called")
+	}
+
+	var resp claimResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if resp.ID != claimID.String() {
+		t.Fatalf("unexpected claim id: got %s want %s", resp.ID, claimID)
+	}
+	if resp.LinkID != linkID.String() {
+		t.Fatalf("unexpected claim link id: got %s want %s", resp.LinkID, linkID)
+	}
+	if resp.UserID != cfg.DevUserID.String() {
+		t.Fatalf("unexpected claim user id: got %s want %s", resp.UserID, cfg.DevUserID)
+	}
+	if !resp.Created {
+		t.Fatalf("expected created flag to be true")
+	}
+	if resp.ClaimedAt.UTC() != claimedAt {
+		t.Fatalf("unexpected claimed_at: got %s want %s", resp.ClaimedAt, claimedAt)
+	}
+}
+
+func TestHandleCreateClaimDuplicate(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{DevUserID: uuid.MustParse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee")}
+	linkID := uuid.New()
+
+	queries := &mockQueries{
+		getLinkFn: func(ctx context.Context, id pgtype.UUID) (db.GetLinkRow, error) {
+			return db.GetLinkRow{
+				ID:        uuidToPg(linkID),
+				UserID:    uuidToPg(cfg.DevUserID),
+				Url:       "https://example.com",
+				CreatedAt: pgtype.Timestamptz{Time: time.Now(), Valid: true},
+				Favorite:  false,
+			}, nil
+		},
+		createClaimFn: func(ctx context.Context, params db.CreateClaimParams) (db.CreateClaimRow, error) {
+			return db.CreateClaimRow{
+				ID:        uuidToPg(uuid.New()),
+				LinkID:    params.LinkID,
+				UserID:    params.UserID,
+				ClaimedAt: pgtype.Timestamptz{Time: time.Now(), Valid: true},
+				Inserted:  false,
+			}, nil
+		},
+	}
+
+	srv := &Server{cfg: cfg, queries: queries, metrics: newTestMetrics()}
+	e := echo.New()
+	srv.RegisterRoutes(e)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/claims", strings.NewReader(fmt.Sprintf(`{"link_id":"%s"}`, linkID)))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+
+	var resp claimResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.Created {
+		t.Fatalf("expected created flag to be false")
+	}
+}
+
+func TestHandleCreateClaimInvalidLinkID(t *testing.T) {
+	t.Parallel()
+
+	srv := &Server{queries: &mockQueries{}, metrics: newTestMetrics()}
+	e := echo.New()
+	srv.RegisterRoutes(e)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/claims", strings.NewReader(`{"link_id":"not-a-uuid"}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, rec.Code)
+	}
+}
+
 func TestNormalizeURL(t *testing.T) {
 	t.Parallel()
 
@@ -715,6 +860,7 @@ type mockQueries struct {
 	listLinksFn                  func(context.Context, db.ListLinksParams) ([]db.ListLinksRow, error)
 	countLinksFn                 func(context.Context, db.CountLinksParams) (int64, error)
 	listRecommendationsForUserFn func(context.Context, db.ListRecommendationsForUserParams) ([]db.ListRecommendationsForUserRow, error)
+	createClaimFn                func(context.Context, db.CreateClaimParams) (db.CreateClaimRow, error)
 	getTagByNameFn               func(context.Context, string) (db.Tag, error)
 	listTagsFn                   func(context.Context) ([]db.Tag, error)
 	createTagFn                  func(context.Context, string) (db.Tag, error)
@@ -731,6 +877,7 @@ type mockQueries struct {
 	deleteHighlightFn            func(context.Context, pgtype.UUID) error
 
 	createLinkCalled      bool
+	createClaimCalled     bool
 	createTagCalled       bool
 	createHighlightCalled bool
 }
@@ -762,6 +909,14 @@ func (m *mockQueries) CountLinks(ctx context.Context, params db.CountLinksParams
 		return 0, fmt.Errorf("unexpected CountLinks call")
 	}
 	return m.countLinksFn(ctx, params)
+}
+
+func (m *mockQueries) CreateClaim(ctx context.Context, params db.CreateClaimParams) (db.CreateClaimRow, error) {
+	m.createClaimCalled = true
+	if m.createClaimFn == nil {
+		return db.CreateClaimRow{}, fmt.Errorf("unexpected CreateClaim call")
+	}
+	return m.createClaimFn(ctx, params)
 }
 
 func (m *mockQueries) GetTagByName(ctx context.Context, name string) (db.Tag, error) {
@@ -887,6 +1042,8 @@ func newTestMetrics() *observability.Metrics {
 		LinkCreateFailure:          prometheus.NewCounter(prometheus.CounterOpts{Name: "test_link_create_failure_total", Help: ""}),
 		LinkListSuccess:            prometheus.NewCounter(prometheus.CounterOpts{Name: "test_link_list_success_total", Help: ""}),
 		LinkListFailure:            prometheus.NewCounter(prometheus.CounterOpts{Name: "test_link_list_failure_total", Help: ""}),
+		ClaimCreateSuccess:         prometheus.NewCounter(prometheus.CounterOpts{Name: "test_claim_create_success_total", Help: ""}),
+		ClaimCreateFailure:         prometheus.NewCounter(prometheus.CounterOpts{Name: "test_claim_create_failure_total", Help: ""}),
 		ReadinessFailure:           prometheus.NewCounter(prometheus.CounterOpts{Name: "test_readiness_failure_total", Help: ""}),
 		ReadinessMigrationGap:      prometheus.NewCounter(prometheus.CounterOpts{Name: "test_readiness_migration_gap_total", Help: ""}),
 		TagCreateSuccess:           prometheus.NewCounter(prometheus.CounterOpts{Name: "test_tag_create_success_total", Help: ""}),

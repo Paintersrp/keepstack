@@ -38,6 +38,7 @@ type queryProvider interface {
 	ListLinks(context.Context, db.ListLinksParams) ([]db.ListLinksRow, error)
 	CountLinks(context.Context, db.CountLinksParams) (int64, error)
 	ListRecommendationsForUser(context.Context, db.ListRecommendationsForUserParams) ([]db.ListRecommendationsForUserRow, error)
+	CreateClaim(context.Context, db.CreateClaimParams) (db.CreateClaimRow, error)
 	GetTagByName(context.Context, string) (db.Tag, error)
 	ListTags(context.Context) ([]db.Tag, error)
 	CreateTag(context.Context, string) (db.Tag, error)
@@ -96,6 +97,7 @@ func (s *Server) RegisterRoutes(e *echo.Echo) {
 	api.POST("/links", s.handleCreateLink)
 	api.GET("/links", s.handleListLinks)
 	api.GET("/recommendations", s.handleListRecommendations)
+	api.POST("/claims", s.handleCreateClaim)
 
 	api.GET("/tags", s.handleListTags)
 	api.POST("/tags", s.handleCreateTag)
@@ -259,6 +261,18 @@ type highlightResponse struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type createClaimRequest struct {
+	LinkID string `json:"link_id"`
+}
+
+type claimResponse struct {
+	ID        string    `json:"id"`
+	LinkID    string    `json:"link_id"`
+	UserID    string    `json:"user_id"`
+	ClaimedAt time.Time `json:"claimed_at"`
+	Created   bool      `json:"created"`
+}
+
 type listLinksResponse struct {
 	Items      []linkResponse `json:"items"`
 	TotalCount int64          `json:"total_count"`
@@ -346,6 +360,63 @@ func (s *Server) handleCreateLink(c echo.Context) error {
 		"id":  linkID.String(),
 		"url": normalizedURL,
 	})
+}
+
+func (s *Server) handleCreateClaim(c echo.Context) error {
+	var req createClaimRequest
+	if err := c.Bind(&req); err != nil {
+		s.metrics.ClaimCreateFailure.Inc()
+		return c.JSON(stdhttp.StatusBadRequest, map[string]string{"error": "invalid payload"})
+	}
+
+	linkIDRaw := strings.TrimSpace(req.LinkID)
+	if linkIDRaw == "" {
+		s.metrics.ClaimCreateFailure.Inc()
+		return c.JSON(stdhttp.StatusBadRequest, map[string]string{"error": "link_id is required"})
+	}
+
+	linkID, err := uuid.Parse(linkIDRaw)
+	if err != nil {
+		s.metrics.ClaimCreateFailure.Inc()
+		return c.JSON(stdhttp.StatusBadRequest, map[string]string{"error": "invalid link_id"})
+	}
+
+	ctx := c.Request().Context()
+	link, err := s.ensureLinkAccess(ctx, linkID)
+	if err != nil {
+		s.metrics.ClaimCreateFailure.Inc()
+		return respondWithError(c, err)
+	}
+
+	result, err := s.queries.CreateClaim(ctx, db.CreateClaimParams{
+		LinkID: uuidToPg(linkID),
+		UserID: link.UserID,
+	})
+	if err != nil {
+		s.metrics.ClaimCreateFailure.Inc()
+		return c.JSON(stdhttp.StatusInternalServerError, map[string]string{"error": "failed to record claim"})
+	}
+
+	claimedAt := time.Now()
+	if result.ClaimedAt.Valid {
+		claimedAt = result.ClaimedAt.Time
+	}
+
+	response := claimResponse{
+		ID:        uuidFromPg(result.ID).String(),
+		LinkID:    uuidFromPg(result.LinkID).String(),
+		UserID:    uuidFromPg(result.UserID).String(),
+		ClaimedAt: claimedAt,
+		Created:   result.Inserted,
+	}
+
+	status := stdhttp.StatusOK
+	if result.Inserted {
+		status = stdhttp.StatusCreated
+	}
+
+	s.metrics.ClaimCreateSuccess.Inc()
+	return c.JSON(status, response)
 }
 
 func (s *Server) handleListLinks(c echo.Context) error {
