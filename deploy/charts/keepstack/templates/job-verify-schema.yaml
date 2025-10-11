@@ -1,0 +1,41 @@
+{{- $registry := .Values.image.registry -}}
+{{- $repository := default .Values.image.apiRepository .Values.verifySchema.image.repository -}}
+{{- $tag := default .Values.image.tag .Values.verifySchema.image.tag -}}
+{{- $pullPolicy := default .Values.image.pullPolicy .Values.verifySchema.image.pullPolicy -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "keepstack.verifySchema.fullname" . }}
+  namespace: {{ include "keepstack.namespace" . }}
+  labels:
+    {{- include "keepstack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: verify-schema
+spec:
+  backoffLimit: {{ default 0 .Values.verifySchema.backoffLimit }}
+  template:
+    metadata:
+      labels:
+        {{- include "keepstack.labels" . | nindent 8 }}
+        app.kubernetes.io/component: verify-schema
+    spec:
+      serviceAccountName: {{ include "keepstack.serviceAccountName.migrator" . }}
+      restartPolicy: Never
+      containers:
+        - name: verify-schema
+          image: {{ printf "%s/%s:%s" $registry $repository $tag }}
+          imagePullPolicy: {{ $pullPolicy }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.secrets.name }}
+{{- with .Values.verifySchema.command }}
+          command:
+{{ toYaml . | indent 12 }}
+{{- end }}
+{{- with .Values.verifySchema.args }}
+          args:
+{{ toYaml . | indent 12 }}
+{{- end }}
+{{- with .Values.verifySchema.resources }}
+          resources:
+{{ toYaml . | indent 12 }}
+{{- end }}

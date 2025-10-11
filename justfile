@@ -5,6 +5,7 @@ TAG := env_var_or_default("TAG", "sha-$(git rev-parse --short HEAD)")
 NAMESPACE := "keepstack"
 CHART := "deploy/charts/keepstack"
 DEV_VALUES := "deploy/values/dev.yaml"
+VERIFY_JOB := "keepstack-keepstack-verify-schema"
 
 alias d := dev-up
 
@@ -54,6 +55,12 @@ smoke-v02:
 
 digest-once:
         kubectl -n {{NAMESPACE}} create job digest-once-$(date +%s) --from=cronjob/keepstack-digest
+
+verify-schema:
+        kubectl -n {{NAMESPACE}} delete job {{VERIFY_JOB}} --ignore-not-found
+        helm template keepstack {{CHART}} -n {{NAMESPACE}} --set image.registry={{REGISTRY}} --set image.tag={{TAG}} --show-only templates/job-verify-schema.yaml | kubectl -n {{NAMESPACE}} apply -f -
+        kubectl -n {{NAMESPACE}} wait --for=condition=Complete job/{{VERIFY_JOB}} --timeout=120s || (kubectl -n {{NAMESPACE}} logs job/{{VERIFY_JOB}} && exit 1)
+        kubectl -n {{NAMESPACE}} logs job/{{VERIFY_JOB}}
 
 test:
         (cd apps/api && go test ./...)
