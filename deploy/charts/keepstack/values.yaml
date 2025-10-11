@@ -149,3 +149,24 @@ ingress:
   className: nginx
   host: keepstack.localtest.me
   tls: false
+
+observability:
+  enabled: false
+  grafana:
+    adminUser: admin
+    adminPassword: prom-operator
+    namespace: monitoring
+    serviceAccount: kube-prometheus-stack-grafana
+  alerts:
+    apiErrorRate:
+      enabled: true
+      window: 5m
+      threshold: 0.05
+      for: 10m
+      severity: warning
+    workerFailures:
+      enabled: true
+      window: 5m
+      threshold: 3
+      for: 10m
+      severity: warning
