@@ -157,14 +157,43 @@ with:
 
 ```sh
 just backup-now
-kubectl -n keepstack get jobs | grep keepstack-backup-now
+BACKUP_JOB=$(kubectl -n keepstack get jobs -l app.kubernetes.io/component=backup \
+  --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1:].metadata.name}')
+kubectl -n keepstack wait --for=condition=complete "job/${BACKUP_JOB}" --timeout=120s
 ```
 
 To exercise the disaster-recovery drill, run `just restore-drill` and follow the
 annotated steps: uninstall the release, reinstall Postgres only, execute the
-example restore job, then bring the deployments back online. Step five now
+example restore job, then bring the deployments back online. Step two now walks
+through mounting the `keepstack-backups` PVC onto a helper pod so you can list
+available dumps (the API Deployment does not expose `/backups`). Step five still
 renders the restore Job with Helm to ensure values overrides are honored before
 applying it:
+
+```sh
+cat <<'YAML' | kubectl -n keepstack apply -f -
+apiVersion: v1
+kind: Pod
+metadata:
+  name: backup-shell
+spec:
+  restartPolicy: Never
+  containers:
+  - name: shell
+    image: alpine:3.19
+    command: ["sleep", "3600"]
+    volumeMounts:
+    - name: backups
+      mountPath: /backups
+  volumes:
+  - name: backups
+    persistentVolumeClaim:
+      claimName: keepstack-backups
+YAML
+kubectl -n keepstack wait --for=condition=Ready pod/backup-shell --timeout=60s
+kubectl -n keepstack exec pod/backup-shell -- ls -1t /backups | head -n1
+kubectl -n keepstack delete pod/backup-shell
+```
 
 ```sh
 helm template keepstack deploy/charts/keepstack -n "${NAMESPACE}" -f "${VALUES}" \
