@@ -13,7 +13,7 @@ dev-up:
 	k3d cluster create --config deploy/k3d/cluster.yaml
 	kubectl cluster-info
 	kubectl wait --for=condition=Ready node/k3d-keepstack-server-0 --timeout=120s
-	kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
+        kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/cloud/deploy.yaml
 	kubectl wait --namespace ingress-nginx --for=condition=Ready pods --selector=app.kubernetes.io/component=controller --timeout=180s || { \
 	        kubectl -n ingress-nginx get pods; \
 	        kubectl -n ingress-nginx describe pods -l app.kubernetes.io/component=controller; \
