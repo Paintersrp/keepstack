@@ -7,6 +7,9 @@ import (
 
 // Metrics aggregates Prometheus collectors used by the API.
 type Metrics struct {
+	HTTPRequestDurationSeconds *prometheus.HistogramVec
+	HTTPRequestTotal           *prometheus.CounterVec
+	HTTPRequestNon2xxTotal     *prometheus.CounterVec
 	LinkCreateSuccess          prometheus.Counter
 	LinkCreateFailure          prometheus.Counter
 	LinkListSuccess            prometheus.Counter
@@ -43,6 +46,22 @@ type Metrics struct {
 func NewMetrics() *Metrics {
 	const namespace = "keepstack_api"
 	return &Metrics{
+		HTTPRequestDurationSeconds: promauto.NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: namespace,
+			Name:      "http_request_duration_seconds",
+			Help:      "Distribution of HTTP request durations in seconds, labelled by route and status code.",
+			Buckets:   prometheus.DefBuckets,
+		}, []string{"route", "code"}),
+		HTTPRequestTotal: promauto.NewCounterVec(prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "http_requests_total",
+			Help:      "Total number of HTTP requests handled, labelled by route and status code.",
+		}, []string{"route", "code"}),
+		HTTPRequestNon2xxTotal: promauto.NewCounterVec(prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "http_requests_non_2xx_total",
+			Help:      "Number of HTTP requests that resulted in non-2xx responses, labelled by route and status code.",
+		}, []string{"route", "code"}),
 		LinkCreateSuccess: promauto.NewCounter(prometheus.CounterOpts{
 			Namespace: namespace,
 			Name:      "link_create_success_total",
