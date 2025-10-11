@@ -47,3 +47,7 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- printf "%s-migrator" (include "keepstack.fullname" .) -}}
 {{- end -}}
 {{- end -}}
+
+{{- define "keepstack.verifySchema.fullname" -}}
+{{- printf "%s-verify-schema" (include "keepstack.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}

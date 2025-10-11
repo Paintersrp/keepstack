@@ -177,10 +177,13 @@ just helm-dev
 kubectl -n keepstack wait --for=condition=Available deploy/keepstack-api --timeout=120s
 kubectl -n keepstack wait --for=condition=Available deploy/keepstack-worker --timeout=120s
 kubectl -n keepstack wait --for=condition=Available deploy/keepstack-web --timeout=120s
+just verify-schema
 just smoke
 ```
 
 The wait commands confirm that each deployment reports an `Available` status before the smoke test runs. If any wait operation times out, inspect the relevant pod logs (for example, `kubectl -n keepstack logs deploy/keepstack-api`) before re-running the workflow.
+
+`just verify-schema` renders a one-off Kubernetes Job that runs `keepstack cron verify-schema`, ensuring the Postgres schema includes the metadata columns, highlights table, and search triggers expected by the v0.2 release. The job exits non-zero when required objects are missing so pending migrations are surfaced before smoke testing.
 
 ### Autoscaling policy
 

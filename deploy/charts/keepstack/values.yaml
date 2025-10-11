@@ -46,6 +46,24 @@ migrate:
       cpu: 200m
       memory: 256Mi
 
+verifySchema:
+  image:
+    repository: keepstack-api
+    tag: ""
+    pullPolicy: ""
+  command:
+    - /app/cron
+  args:
+    - verify-schema
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+  backoffLimit: 0
+
 digest:
   enabled: false
   schedule: "0 9 * * *"
