@@ -2,7 +2,7 @@
 
 Keepstack is a self-hosted reading queue and web archiver designed for homelab and small team deployments. Drop a link into the API or web UI and Keepstack fetches the page, extracts the readable content, persists it in Postgres, and makes it instantly searchable. The worker pipeline is built to be observable and resilient so you always know which pages have been processed.
 
-Built with Go, React, Postgres, NATS, and Kubernetes, Keepstack v0.1 focuses on delivering an end-to-end slice that is easy to run locally or on lightweight clusters such as k3d. Future releases will layer in richer user management, browser automation, and deeper archive controls.
+Built with Go, React, Postgres, NATS, and Kubernetes, Keepstack v0.2 layers tagging, highlighting, and digest automation onto the original end-to-end slice so releases stay focused on a polished, deployable experience. Future releases will continue building richer user management, browser automation, and deeper archive controls.
 
 ## v0.2 Features
 
@@ -94,7 +94,9 @@ keepstack/
    `SMTP_URL` accepts standard SMTP connection strings such as
    `smtp://username:password@smtp.keepstack.local:587`. For local testing, use
    `log://` to write a base64-encoded payload to the API logs instead of
-   delivering mail.
+   delivering mail. The fallback prints `mail.digest` log entries that include
+   the rendered subject line and a base64 body so you can confirm the template
+   output by running `just logs` without a live SMTP relay.
 
 ### Enabling the scheduled digest
 
@@ -112,6 +114,10 @@ helm upgrade --install keepstack deploy/charts/keepstack \
   --set digest.sender="Keepstack Digest <digest@example.com>" \
   --set digest.recipient="team@example.com"
 ```
+
+Kubernetes CronJobs interpret schedules in the cluster's timezone (UTC on most
+managed offerings). Adjust `digest.schedule` accordingly if you expect digests
+to land in a specific local time window.
 
 Override `digest.schedule` to change when the CronJob fires, update
 `digest.limit` to cap the number of unread links, and set sender/recipient
@@ -143,7 +149,7 @@ values out of Helm overrides.
 
    ```sh
    just seed
-   just smoke
+   just smoke-v02
    ```
 
 7. **Open the app**
@@ -154,11 +160,11 @@ values out of Helm overrides.
 
 ### Smoke test expectations
 
-`just smoke-v02` executes the v0.2 workflow end-to-end: it creates a link, waits for the worker to archive it, exercises tag replacement semantics (including multi-tag AND filtering), and verifies that highlights capture both text and note content. The run passes when the tagged link and highlight appear in API results, confirming the API, worker, Postgres, and ingress are all wired together.
+`just smoke-v02` executes the v0.2 workflow end-to-end: it creates a link, waits for the worker to archive it, exercises tag replacement semantics (including multi-tag AND filtering), and verifies that highlights capture both text and note content. Highlights inherit their source offsets so re-parsed articles can reflow while annotations still render in the original context, and tag updates are idempotent—reposting a tag set overwrites the previous values rather than appending duplicates. The run passes when the tagged link and highlight appear in API results, confirming the API, worker, Postgres, and ingress are all wired together.
 
-## Verify v0.1
+## Verify v0.2
 
-Run the workflow below to exercise the full v0.1 deployment path from cluster bootstrap through smoke testing. It bootstraps a local k3d cluster with ingress-nginx, provisions the shared application secret, deploys the Helm chart, waits for the core workloads to become available, and finally executes the smoke test against the ingress endpoint.
+Follow the workflow below to exercise the full v0.2 deployment path from cluster bootstrap through smoke testing. It bootstraps a local k3d cluster with ingress-nginx, provisions the shared application secret, deploys the Helm chart, waits for the core workloads to become available, and finally executes both the schema check and smoke test against the ingress endpoint.
 
 ```sh
 just dev-up
@@ -178,12 +184,18 @@ kubectl -n keepstack wait --for=condition=Available deploy/keepstack-api --timeo
 kubectl -n keepstack wait --for=condition=Available deploy/keepstack-worker --timeout=120s
 kubectl -n keepstack wait --for=condition=Available deploy/keepstack-web --timeout=120s
 just verify-schema
-just smoke
+just smoke-v02
+DIGEST_TEST=1 just smoke-v02
+kubectl -n keepstack describe netpol keepstack-allow-api-to-nats
 ```
 
 The wait commands confirm that each deployment reports an `Available` status before the smoke test runs. If any wait operation times out, inspect the relevant pod logs (for example, `kubectl -n keepstack logs deploy/keepstack-api`) before re-running the workflow.
 
 `just verify-schema` renders a one-off Kubernetes Job that runs `keepstack cron verify-schema`, ensuring the Postgres schema includes the metadata columns, highlights table, and search triggers expected by the v0.2 release. The job exits non-zero when required objects are missing so pending migrations are surfaced before smoke testing.
+
+`just smoke-v02` drives the API/worker/web flow while validating tag replacement, highlight persistence, and digest rendering. Setting `DIGEST_TEST=1` exercises the digest preview mode so the API emits a `log://` fallback email without attempting SMTP delivery.
+
+`kubectl describe netpol keepstack-allow-api-to-nats` surfaces NetworkPolicy status and matching pod selectors. If the smoke test reports `nats:4222` dial errors or `timeout waiting on ack` messages, confirm the policy is present and that both the API and NATS pods carry the expected labels.
 
 ### Autoscaling policy
 
@@ -205,7 +217,7 @@ The API deployment includes a Horizontal Pod Autoscaler that keeps at least two 
   archives metadata columns and highlights table exist; failures surface hints about pending migrations alongside Prometheus metrics.
   Verify deployment health with `kubectl -n keepstack get deploy keepstack-api` and inspect logs via `just logs` to confirm database
   migrations ran successfully.
-- **Link publish failures**: Persistent HTTP `5xx` errors when posting new links can indicate the API pods cannot reach NATS. Confirm the `keepstack-allow-api-to-nats` NetworkPolicy is installed and that the NATS StatefulSet is healthy with `kubectl -n keepstack get statefulset keepstack-nats`.
+- **Link publish failures**: Persistent HTTP `5xx` errors or `timeout waiting on ack` messages when posting new links can indicate the API pods cannot reach NATS. Confirm the `keepstack-allow-api-to-nats` NetworkPolicy is installed, that its podSelectors match the API and NATS labels via `kubectl -n keepstack describe netpol keepstack-allow-api-to-nats`, and that the NATS StatefulSet is healthy with `kubectl -n keepstack get statefulset keepstack-nats`.
 - **Tear down**: Clean up the development environment with `just dev-down` after smoke testing to delete the k3d cluster.
 
 ## v0.1 Scope & Definition of Done
