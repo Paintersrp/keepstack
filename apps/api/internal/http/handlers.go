@@ -85,6 +85,7 @@ func (s *Server) RegisterRoutes(e *echo.Echo) {
 	e.HideBanner = true
 	e.Use(middleware.Recover())
 	e.Use(middleware.Logger())
+	e.Use(MetricsMiddleware(s.metrics))
 
 	e.GET("/healthz", s.handleHealthz)
 	e.GET("/livez", s.handleLivez)
