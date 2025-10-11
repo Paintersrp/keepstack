@@ -254,6 +254,13 @@ values out of Helm overrides.
    just helm-dev
    ```
 
+   The observability extras in `deploy/values/dev.yaml` assume the
+   Prometheus Operator CRDs are installed. If your cluster does not include
+   them yet, Helm will now skip the ServiceMonitor and PrometheusRule
+   resources automatically; re-run `just helm-dev` after installing the CRDs
+   (or temporarily set `observability.enabled=false`) to add the monitoring
+   objects.
+
 5. **Verify pods and tail API logs**
 
    ```sh
