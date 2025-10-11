@@ -12,6 +12,7 @@ type Metrics struct {
 	LinkListSuccess            prometheus.Counter
 	LinkListFailure            prometheus.Counter
 	ReadinessFailure           prometheus.Counter
+	ReadinessMigrationGap      prometheus.Counter
 	TagCreateSuccess           prometheus.Counter
 	TagCreateFailure           prometheus.Counter
 	TagListSuccess             prometheus.Counter
@@ -66,6 +67,11 @@ func NewMetrics() *Metrics {
 			Namespace: namespace,
 			Name:      "readiness_failure_total",
 			Help:      "Number of readiness probe checks that failed.",
+		}),
+		ReadinessMigrationGap: promauto.NewCounter(prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "readiness_migration_gap_total",
+			Help:      "Number of readiness probe failures caused by missing database migrations.",
 		}),
 		TagCreateSuccess: promauto.NewCounter(prometheus.CounterOpts{
 			Namespace: namespace,
