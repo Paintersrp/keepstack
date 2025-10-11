@@ -14,6 +14,8 @@ type Metrics struct {
 	LinkCreateFailure          prometheus.Counter
 	LinkListSuccess            prometheus.Counter
 	LinkListFailure            prometheus.Counter
+	ClaimCreateSuccess         prometheus.Counter
+	ClaimCreateFailure         prometheus.Counter
 	ReadinessFailure           prometheus.Counter
 	ReadinessMigrationGap      prometheus.Counter
 	TagCreateSuccess           prometheus.Counter
@@ -81,6 +83,16 @@ func NewMetrics() *Metrics {
 			Namespace: namespace,
 			Name:      "link_list_failure_total",
 			Help:      "Number of link listing requests that failed.",
+		}),
+		ClaimCreateSuccess: promauto.NewCounter(prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "claim_create_success_total",
+			Help:      "Number of claim creation requests that succeeded.",
+		}),
+		ClaimCreateFailure: promauto.NewCounter(prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "claim_create_failure_total",
+			Help:      "Number of claim creation requests that failed.",
 		}),
 		ReadinessFailure: promauto.NewCounter(prometheus.CounterOpts{
 			Namespace: namespace,

@@ -18,6 +18,13 @@ type Archive struct {
 	WordCount     pgtype.Int4
 }
 
+type Claim struct {
+	ID        pgtype.UUID
+	LinkID    pgtype.UUID
+	UserID    pgtype.UUID
+	ClaimedAt pgtype.Timestamptz
+}
+
 type Highlight struct {
 	ID         pgtype.UUID
 	LinkID     pgtype.UUID
