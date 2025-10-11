@@ -59,14 +59,35 @@ smoke-v02:
 digest-once:
         kubectl -n {{NAMESPACE}} create job digest-once-$(date +%s) --from=cronjob/keepstack-digest
 
+# Environment: KS_NAMESPACE, KS_RELEASE, KS_BACKUP_JOB_PREFIX, KS_BACKUP_TIME_FORMAT, KS_BACKUP_TIMEOUT, KS_BACKUP_FOLLOW_LOGS
 backup-now:
-        kubectl -n {{NAMESPACE}} create job keepstack-backup-now-$(date +%s) --from=cronjob/keepstack-backup
+        {{justfile_directory()}}/scripts/backup-now.sh
 
 resurfacer-now:
         kubectl -n {{NAMESPACE}} create job keepstack-resurfacer-now-$(date +%s) --from=cronjob/keepstack-resurfacer
 
+# Environment: KS_NAMESPACE, KS_RELEASE, KS_API_METRICS_PORT, KS_WORKER_METRICS_PORT
+verify-obs:
+        {{justfile_directory()}}/scripts/verify-obs.sh
+
+# Environment: KS_NAMESPACE, KS_RELEASE, PROM_NAMESPACE, PROM_RELEASE, PROM_SERVICE, SMOKE_BASE_URL,
+#              KS_ALERT_API_ERROR_DURATION, KS_ALERT_WORKER_FAILURE_COUNT, KS_ALERT_WORKER_FAILURE_INTERVAL,
+#              KS_ALERT_TIMEOUT_SECONDS, KS_ALERT_API_RECOVERY_REQUESTS, KS_ALERT_PROM_LOCAL_PORT,
+#              KS_ALERT_API_WINDOW, KS_ALERT_API_FOR, KS_ALERT_WORKER_WINDOW, KS_ALERT_WORKER_FOR
+verify-alerts:
+        {{justfile_directory()}}/scripts/verify-alerts.sh
+
 restore-drill:
         {{justfile_directory()}}/scripts/restore-drill.sh
+
+# Environment: KS_NAMESPACE, KS_RELEASE, SMOKE_BASE_URL, KS_ROLLOUT_CURL_INTERVAL, KS_ROLLOUT_CURL_TIMEOUT,
+#              KS_ROLLOUT_ROLLBACK, KS_ROLLOUT_TIMEOUT
+rollout-observe:
+        {{justfile_directory()}}/scripts/rollout-observe.sh
+
+# Environment: SMOKE_BASE_URL, KS_NAMESPACE, KS_RELEASE, KS_RESURF_LIMIT, KS_RESURF_TIMEOUT
+smoke-v03:
+        {{justfile_directory()}}/scripts/smoke-v03.sh
 
 verify-schema:
         kubectl -n {{NAMESPACE}} delete job {{VERIFY_JOB}} --ignore-not-found
