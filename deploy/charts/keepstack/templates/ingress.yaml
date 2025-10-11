@@ -6,12 +6,15 @@ metadata:
   namespace: {{ include "keepstack.namespace" . }}
   labels:
     {{- include "keepstack.labels" . | nindent 4 }}
-  {{- if .Values.ingress.className }}
   annotations:
+    {{- if .Values.ingress.className }}
     kubernetes.io/ingress.class: {{ .Values.ingress.className }}
-  {{- end }}
+    {{- end }}
+    {{- if .Values.tls.enabled }}
+    cert-manager.io/cluster-issuer: {{ include "keepstack.tlsIssuerName" . }}
+    {{- end }}
 spec:
-  {{- if .Values.ingress.tls }}
+  {{- if .Values.tls.enabled }}
   tls:
     - hosts:
         - {{ .Values.ingress.host }}

@@ -46,6 +46,12 @@ const listRoute = createRoute({
         : typeof search.page === "number"
         ? Math.max(1, Math.floor(search.page))
         : 1,
+    suggested:
+      typeof search.suggested === "string"
+        ? search.suggested === "true"
+        : typeof search.suggested === "boolean"
+        ? search.suggested
+        : undefined,
   }),
   component: () => {
     const navigate = listRoute.useNavigate();
@@ -61,6 +67,7 @@ const listRoute = createRoute({
               favorite: next.favorite,
               tags: next.tags && next.tags.length > 0 ? next.tags : undefined,
               page: next.page && next.page > 1 ? next.page : undefined,
+              suggested: next.suggested ? true : undefined,
             },
           })
         }
@@ -76,7 +83,12 @@ const addRoute = createRoute({
     const navigate = addRoute.useNavigate();
     return (
       <AddPage
-        onSuccess={() => navigate({ to: "/", search: { q: "", favorite: undefined } })}
+        onSuccess={() =>
+          navigate({
+            to: "/",
+            search: { q: "", favorite: undefined, tags: [], page: 1, suggested: undefined },
+          })
+        }
       />
     );
   },
@@ -104,7 +116,7 @@ function RootLayout() {
         <nav className="mx-auto flex max-w-4xl items-center justify-between px-6 py-4">
           <Link
             to="/"
-            search={{ q: "", favorite: undefined }}
+            search={{ q: "", favorite: undefined, tags: [], page: 1, suggested: undefined }}
             className="text-lg font-semibold text-slate-100"
           >
             Keepstack

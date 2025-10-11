@@ -39,6 +39,12 @@ export interface ListLinksResponse {
   offset: number;
 }
 
+export interface RecommendationsResponse {
+  items: LinkSummary[];
+  limit: number;
+  count: number;
+}
+
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "/api";
 
 type RequestInitWithBody = RequestInit & { body?: BodyInit | null };
@@ -82,6 +88,11 @@ export async function listLinks(params: ListLinksParams): Promise<ListLinksRespo
   const queryString = query.toString();
   const path = queryString ? `/links?${queryString}` : "/links";
   return request<ListLinksResponse>(path, { method: "GET" });
+}
+
+export function listRecommendations(limit: number): Promise<RecommendationsResponse> {
+  const query = limit > 0 ? `?limit=${limit}` : "";
+  return request<RecommendationsResponse>(`/recommendations${query}`, { method: "GET" });
 }
 
 export interface CreateLinkInput {

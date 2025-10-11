@@ -12,9 +12,9 @@ spec:
     - name: keepstack.api
       rules:
         {{- if .Values.observability.alerts.apiErrorRate.enabled }}
-        - alert: KeepstackAPIElevatedErrors
+        - alert: KeepstackHighErrorRate
           expr: |
-            (sum(rate(keepstack_api_http_requests_non_2xx_total[{{ .Values.observability.alerts.apiErrorRate.window }}])) /
+            (sum(rate(keepstack_api_http_requests_total{code=~"5.."}[{{ .Values.observability.alerts.apiErrorRate.window }}])) /
             sum(rate(keepstack_api_http_requests_total[{{ .Values.observability.alerts.apiErrorRate.window }}])))
             > {{ .Values.observability.alerts.apiErrorRate.threshold }}
           for: {{ .Values.observability.alerts.apiErrorRate.for }}
@@ -25,6 +25,19 @@ spec:
             description: |
               The Keepstack API is returning non-2xx responses above the configured threshold.
               Investigate recent deployments or upstream dependencies.
+        {{- end }}
+        {{- if .Values.observability.alerts.apiLatency.enabled }}
+        - alert: KeepstackHighLatencyP95
+          expr: |
+            histogram_quantile(0.95, sum(rate(keepstack_api_http_request_duration_seconds_bucket[{{ .Values.observability.alerts.apiLatency.window }}])) by (le))
+            > {{ .Values.observability.alerts.apiLatency.thresholdSeconds }}
+          for: {{ .Values.observability.alerts.apiLatency.for }}
+          labels:
+            severity: {{ .Values.observability.alerts.apiLatency.severity }}
+          annotations:
+            summary: "Keepstack API latency p95 above {{ .Values.observability.alerts.apiLatency.thresholdSeconds }}s"
+            description: |
+              The p95 request latency is elevated. Check recent deployments or database health.
         {{- end }}
     - name: keepstack.worker
       rules:

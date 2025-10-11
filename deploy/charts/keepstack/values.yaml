@@ -70,6 +70,39 @@ digest:
   successfulJobsHistoryLimit: 1
   failedJobsHistoryLimit: 1
 
+backup:
+  enabled: false
+  schedule: "0 3 * * *"
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  retention: 7
+  keepLocal: false
+  storage:
+    kind: pvc # pvc | s3
+    pvc:
+      size: 5Gi
+      existingClaim: ""
+    s3:
+      bucket: ""
+      endpoint: ""
+      region: us-east-1
+      prefix: ""
+      credentialsSecret: ""
+      accessKeyKey: accessKey
+      secretKeyKey: secretKey
+  resources: {}
+  restoreExample:
+    enabled: false
+    backupPath: ""
+
+resurfacer:
+  enabled: false
+  schedule: "0 2 * * *"
+  limit: 20
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  resources: {}
+
 api:
   replicas: 2
   terminationGracePeriodSeconds: 30
@@ -154,6 +187,11 @@ ingress:
   host: keepstack.localtest.me
   tls: false
 
+tls:
+  enabled: false
+  issuer: selfsigned
+  email: dev@example.com
+
 observability:
   enabled: false
   grafana:
@@ -166,6 +204,12 @@ observability:
       enabled: true
       window: 5m
       threshold: 0.05
+      for: 10m
+      severity: warning
+    apiLatency:
+      enabled: true
+      window: 5m
+      thresholdSeconds: 1
       for: 10m
       severity: warning
     workerFailures:

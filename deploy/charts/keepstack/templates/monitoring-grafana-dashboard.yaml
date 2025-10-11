@@ -14,7 +14,7 @@ data:
       "title": "Keepstack Overview",
       "uid": "keepstack-overview",
       "schemaVersion": 38,
-      "version": 1,
+      "version": 2,
       "refresh": "30s",
       "time": {
         "from": "now-1h",
@@ -23,7 +23,7 @@ data:
       "panels": [
         {
           "type": "graph",
-          "title": "API Request Volume",
+          "title": "API Request Rate",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -34,7 +34,7 @@ data:
               "legendFormat": "{{"{{"}}route{{"}}"}}"
             }
           ],
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+          "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0},
           "lines": true,
           "linewidth": 2
         },
@@ -52,10 +52,35 @@ data:
             }
           ],
           "yaxes": [
-            {"format": "percentunit", "label": "Errors", "logBase": 1},
-            {"format": "short", "logBase": 1}
+            {"format": "percentunit", "label": "Errors"},
+            {"format": "short"}
           ],
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+          "gridPos": {"h": 8, "w": 8, "x": 8, "y": 0},
+          "lines": true,
+          "linewidth": 2
+        },
+        {
+          "type": "graph",
+          "title": "API Latency (p50/p95)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.5, sum by (le) (rate(keepstack_api_http_request_duration_seconds_bucket[5m])))",
+              "legendFormat": "p50"
+            },
+            {
+              "expr": "histogram_quantile(0.95, sum by (le) (rate(keepstack_api_http_request_duration_seconds_bucket[5m])))",
+              "legendFormat": "p95"
+            }
+          ],
+          "yaxes": [
+            {"format": "s", "label": "Seconds"},
+            {"format": "short"}
+          ],
+          "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0},
           "lines": true,
           "linewidth": 2
         },
@@ -76,32 +101,53 @@ data:
               "legendFormat": "Failed"
             }
           ],
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+          "gridPos": {"h": 8, "w": 8, "x": 0, "y": 8},
           "lines": true,
           "linewidth": 2
         },
         {
           "type": "graph",
-          "title": "Worker Latency (p95)",
+          "title": "Worker Duration & Queue Lag",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
           },
           "targets": [
             {
-              "expr": "histogram_quantile(0.95, sum by (le) (rate(keepstack_worker_fetch_duration_seconds_bucket[5m])))",
-              "legendFormat": "Fetch"
+              "expr": "histogram_quantile(0.95, sum by (le) (rate(keepstack_worker_parse_seconds_bucket[5m])))",
+              "legendFormat": "Parse p95"
             },
             {
-              "expr": "histogram_quantile(0.95, sum by (le) (rate(keepstack_worker_persist_duration_seconds_bucket[5m])))",
-              "legendFormat": "Persist"
+              "expr": "histogram_quantile(0.95, sum by (le) (rate(keepstack_worker_queue_lag_seconds_bucket[5m])))",
+              "legendFormat": "Queue lag p95"
             }
           ],
           "yaxes": [
-            {"format": "s", "label": "Seconds", "logBase": 1},
-            {"format": "short", "logBase": 1}
+            {"format": "s", "label": "Seconds"},
+            {"format": "short"}
           ],
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+          "gridPos": {"h": 8, "w": 8, "x": 8, "y": 8},
+          "lines": true,
+          "linewidth": 2
+        },
+        {
+          "type": "graph",
+          "title": "Worker Success Rate",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "expr": "sum(rate(keepstack_worker_jobs_processed_total[5m])) / (sum(rate(keepstack_worker_jobs_processed_total[5m])) + sum(rate(keepstack_worker_jobs_failed_total[5m])))",
+              "legendFormat": "Success%"
+            }
+          ],
+          "yaxes": [
+            {"format": "percentunit", "label": "Success"},
+            {"format": "short"}
+          ],
+          "gridPos": {"h": 8, "w": 8, "x": 16, "y": 8},
           "lines": true,
           "linewidth": 2
         }

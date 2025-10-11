@@ -711,23 +711,24 @@ func TestParsePagination(t *testing.T) {
 // --- Helpers ---
 
 type mockQueries struct {
-	createLinkFn           func(context.Context, db.CreateLinkParams) (db.CreateLinkRow, error)
-	listLinksFn            func(context.Context, db.ListLinksParams) ([]db.ListLinksRow, error)
-	countLinksFn           func(context.Context, db.CountLinksParams) (int64, error)
-	getTagByNameFn         func(context.Context, string) (db.Tag, error)
-	listTagsFn             func(context.Context) ([]db.Tag, error)
-	createTagFn            func(context.Context, string) (db.Tag, error)
-	getTagFn               func(context.Context, int32) (db.Tag, error)
-	updateTagFn            func(context.Context, db.UpdateTagParams) (db.Tag, error)
-	deleteTagFn            func(context.Context, int32) error
-	listTagsForLinkFn      func(context.Context, pgtype.UUID) ([]db.Tag, error)
-	addTagToLinkFn         func(context.Context, db.AddTagToLinkParams) error
-	removeTagFromLinkFn    func(context.Context, db.RemoveTagFromLinkParams) error
-	getLinkFn              func(context.Context, pgtype.UUID) (db.GetLinkRow, error)
-	listHighlightsByLinkFn func(context.Context, pgtype.UUID) ([]db.Highlight, error)
-	createHighlightFn      func(context.Context, db.CreateHighlightParams) (db.Highlight, error)
-	updateHighlightFn      func(context.Context, db.UpdateHighlightParams) (db.Highlight, error)
-	deleteHighlightFn      func(context.Context, pgtype.UUID) error
+	createLinkFn                 func(context.Context, db.CreateLinkParams) (db.CreateLinkRow, error)
+	listLinksFn                  func(context.Context, db.ListLinksParams) ([]db.ListLinksRow, error)
+	countLinksFn                 func(context.Context, db.CountLinksParams) (int64, error)
+	listRecommendationsForUserFn func(context.Context, db.ListRecommendationsForUserParams) ([]db.ListRecommendationsForUserRow, error)
+	getTagByNameFn               func(context.Context, string) (db.Tag, error)
+	listTagsFn                   func(context.Context) ([]db.Tag, error)
+	createTagFn                  func(context.Context, string) (db.Tag, error)
+	getTagFn                     func(context.Context, int32) (db.Tag, error)
+	updateTagFn                  func(context.Context, db.UpdateTagParams) (db.Tag, error)
+	deleteTagFn                  func(context.Context, int32) error
+	listTagsForLinkFn            func(context.Context, pgtype.UUID) ([]db.Tag, error)
+	addTagToLinkFn               func(context.Context, db.AddTagToLinkParams) error
+	removeTagFromLinkFn          func(context.Context, db.RemoveTagFromLinkParams) error
+	getLinkFn                    func(context.Context, pgtype.UUID) (db.GetLinkRow, error)
+	listHighlightsByLinkFn       func(context.Context, pgtype.UUID) ([]db.Highlight, error)
+	createHighlightFn            func(context.Context, db.CreateHighlightParams) (db.Highlight, error)
+	updateHighlightFn            func(context.Context, db.UpdateHighlightParams) (db.Highlight, error)
+	deleteHighlightFn            func(context.Context, pgtype.UUID) error
 
 	createLinkCalled      bool
 	createTagCalled       bool
@@ -747,6 +748,13 @@ func (m *mockQueries) ListLinks(ctx context.Context, params db.ListLinksParams) 
 		return nil, fmt.Errorf("unexpected ListLinks call")
 	}
 	return m.listLinksFn(ctx, params)
+}
+
+func (m *mockQueries) ListRecommendationsForUser(ctx context.Context, params db.ListRecommendationsForUserParams) ([]db.ListRecommendationsForUserRow, error) {
+	if m.listRecommendationsForUserFn == nil {
+		return nil, fmt.Errorf("unexpected ListRecommendationsForUser call")
+	}
+	return m.listRecommendationsForUserFn(ctx, params)
 }
 
 func (m *mockQueries) CountLinks(ctx context.Context, params db.CountLinksParams) (int64, error) {

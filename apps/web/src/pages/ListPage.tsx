@@ -4,11 +4,13 @@ import {
   createHighlight,
   deleteHighlight,
   listLinks,
+  listRecommendations,
   listTags,
   updateLink,
   type HighlightSummary,
   type LinkSummary,
   type ListLinksResponse,
+  type RecommendationsResponse,
   type TagWithCount,
 } from "../api/client";
 import { Button } from "../components/ui/button";
@@ -21,6 +23,7 @@ type SearchState = {
   favorite?: boolean;
   tags?: string[];
   page?: number;
+  suggested?: boolean;
 };
 
 type LinksQueryKey = ["links", SearchState];
@@ -34,6 +37,7 @@ export function ListPage({ search, onSearchChange }: ListPageProps) {
   const [query, setQuery] = useState(search.q ?? "");
   const selectedTags = search.tags ?? [];
   const currentPage = search.page ?? 1;
+  const showSuggestions = Boolean(search.suggested);
   const queryKey = useMemo<LinksQueryKey>(() => ["links", search], [search]);
   const [highlightLinkId, setHighlightLinkId] = useState<string | null>(null);
 
@@ -57,6 +61,21 @@ export function ListPage({ search, onSearchChange }: ListPageProps) {
         limit: PAGE_SIZE,
         offset: (currentPage - 1) * PAGE_SIZE,
       }),
+    enabled: !showSuggestions,
+    refetchOnWindowFocus: false,
+  });
+
+  const {
+    data: recommendationsData,
+    isLoading: areRecommendationsLoading,
+    isError: recommendationsError,
+    error: recommendationsErrorDetails,
+    isFetching: isRecommendationsFetching,
+  } = useQuery<RecommendationsResponse, Error>({
+    queryKey: ["recommendations", PAGE_SIZE],
+    queryFn: () => listRecommendations(PAGE_SIZE),
+    enabled: showSuggestions,
+    staleTime: 1000 * 60,
     refetchOnWindowFocus: false,
   });
 
@@ -71,9 +90,18 @@ export function ListPage({ search, onSearchChange }: ListPageProps) {
     staleTime: 1000 * 60 * 5,
   });
 
+  const items: LinkSummary[] = showSuggestions
+    ? recommendationsData?.items ?? []
+    : data?.items ?? [];
+  const totalCount = showSuggestions ? recommendationsData?.count ?? items.length : data?.total_count ?? 0;
+  const isLoadingList = showSuggestions ? areRecommendationsLoading : isLoading;
+  const isFetchingList = showSuggestions ? isRecommendationsFetching : isFetching;
+  const isErrorList = showSuggestions ? recommendationsError : isError;
+  const listError = showSuggestions ? recommendationsErrorDetails : error;
+
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    onSearchChange({ ...search, q: query.trim(), page: 1 });
+    onSearchChange({ ...search, q: query.trim(), page: 1, suggested: undefined });
   };
 
   const toggleFavoriteFilter = () => {
@@ -81,6 +109,7 @@ export function ListPage({ search, onSearchChange }: ListPageProps) {
       ...search,
       favorite: search.favorite ? undefined : true,
       page: 1,
+      suggested: undefined,
     });
   };
 
@@ -88,21 +117,31 @@ export function ListPage({ search, onSearchChange }: ListPageProps) {
     const nextTags = selectedTags.includes(name)
       ? selectedTags.filter((tag) => tag !== name)
       : [...selectedTags, name];
-    onSearchChange({ ...search, tags: nextTags, page: 1 });
+    onSearchChange({ ...search, tags: nextTags, page: 1, suggested: undefined });
   };
 
   const clearTags = () => {
     if (selectedTags.length === 0) return;
-    onSearchChange({ ...search, tags: [], page: 1 });
+    onSearchChange({ ...search, tags: [], page: 1, suggested: undefined });
   };
 
   const goToPage = (page: number) => {
     onSearchChange({ ...search, page });
   };
 
-  const selectedLink = highlightLinkId
-    ? data?.items.find((item) => item.id === highlightLinkId) ?? null
-    : null;
+  const toggleSuggested = () => {
+    const nextSuggested = !search.suggested;
+    setQuery("");
+    onSearchChange({
+      q: "",
+      favorite: undefined,
+      tags: [],
+      page: 1,
+      suggested: nextSuggested ? true : undefined,
+    });
+  };
+
+  const selectedLink = highlightLinkId ? items.find((item) => item.id === highlightLinkId) ?? null : null;
 
   useEffect(() => {
     if (highlightLinkId && !selectedLink) {
@@ -110,7 +149,7 @@ export function ListPage({ search, onSearchChange }: ListPageProps) {
     }
   }, [highlightLinkId, selectedLink]);
 
-  const totalPages = data && data.limit > 0 ? Math.max(1, Math.ceil(data.total_count / data.limit)) : 1;
+  const totalPages = !showSuggestions && data && data.limit > 0 ? Math.max(1, Math.ceil(data.total_count / data.limit)) : 1;
 
   return (
     <div className="grid gap-6 lg:grid-cols-[260px_1fr]">
@@ -141,6 +180,19 @@ export function ListPage({ search, onSearchChange }: ListPageProps) {
             <span>Favorites only</span>
             {search.favorite && <span className="text-xs uppercase">On</span>}
           </button>
+          <button
+            type="button"
+            onClick={toggleSuggested}
+            className={cn(
+              "flex w-full items-center justify-between rounded-md border px-3 py-2 text-sm transition",
+              showSuggestions
+                ? "border-sky-400 bg-sky-400/10 text-sky-300"
+                : "border-slate-800 bg-slate-950 text-slate-300 hover:border-slate-700 hover:text-slate-100"
+            )}
+          >
+            <span>Suggested picks</span>
+            {showSuggestions && <span className="text-xs uppercase">On</span>}
+          </button>
           <div className="space-y-2">
             <p className="text-xs uppercase tracking-wide text-slate-400">Tags</p>
             <div className="flex flex-wrap gap-2">
@@ -151,6 +203,7 @@ export function ListPage({ search, onSearchChange }: ListPageProps) {
                     tag={tag}
                     selected={selectedTags.includes(tag.name)}
                     onToggle={() => toggleTag(tag.name)}
+                    disabled={showSuggestions}
                   />
                 ))
               ) : areTagsLoading ? (
@@ -195,11 +248,18 @@ export function ListPage({ search, onSearchChange }: ListPageProps) {
         )}
 
         <section className="space-y-4">
-          {(isLoading || isFetching) && <p className="text-sm text-slate-300">Loading...</p>}
-          {!isLoading && data && data.items.length === 0 && (
-            <p className="text-sm text-slate-400">No links found. Try saving one from the Add page.</p>
+          {(isLoadingList || isFetchingList) && <p className="text-sm text-slate-300">Loading...</p>}
+          {isErrorList && (
+            <p className="text-sm text-red-400">{listError?.message ?? "Failed to load items"}</p>
           )}
-          {data?.items.map((item) => (
+          {!isLoadingList && !isErrorList && items.length === 0 && (
+            <p className="text-sm text-slate-400">
+              {showSuggestions
+                ? "No unread links qualify yet. Keepstack will populate suggestions once new links age in the queue."
+                : "No links found. Try saving one from the Add page."}
+            </p>
+          )}
+          {items.map((item) => (
             <LinkCard
               key={item.id}
               link={item}
@@ -209,7 +269,7 @@ export function ListPage({ search, onSearchChange }: ListPageProps) {
           ))}
         </section>
 
-        {data && data.total_count > data.limit && (
+        {!showSuggestions && data && data.total_count > data.limit && (
           <nav className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900/60 p-4 text-sm">
             <span className="text-slate-400">
               Page {currentPage} of {totalPages}
@@ -260,6 +320,7 @@ function LinkCard({ link, queryKey, onOpenHighlights }: LinkCardProps) {
           items: current.items.map((item) => (item.id === updatedLink.id ? { ...item, ...updatedLink } : item)),
         };
       });
+      queryClient.invalidateQueries({ queryKey: ["recommendations", PAGE_SIZE] });
     },
   });
 
@@ -470,15 +531,17 @@ interface TagChipProps {
   tag: TagWithCount;
   selected: boolean;
   onToggle: () => void;
+  disabled?: boolean;
 }
 
-function TagChip({ tag, selected, onToggle }: TagChipProps) {
+function TagChip({ tag, selected, onToggle, disabled }: TagChipProps) {
   return (
     <button
       type="button"
       onClick={onToggle}
+      disabled={disabled}
       className={cn(
-        "rounded-full border px-3 py-1 text-xs transition",
+        "rounded-full border px-3 py-1 text-xs transition disabled:opacity-60",
         selected
           ? "border-amber-400 bg-amber-400/10 text-amber-200"
           : "border-slate-800 bg-slate-950 text-slate-300 hover:border-slate-700 hover:text-slate-100"

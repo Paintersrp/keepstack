@@ -1,0 +1,15 @@
+{{- if and .Values.backup.enabled (eq (.Values.backup.storage.kind | default "pvc") "pvc") (not .Values.backup.storage.pvc.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "keepstack.backupPvcName" . }}
+  namespace: {{ include "keepstack.namespace" . }}
+  labels:
+    {{- include "keepstack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: {{ .Values.backup.storage.pvc.size | default "5Gi" }}
+{{- end }}

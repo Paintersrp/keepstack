@@ -119,6 +119,81 @@ Kubernetes CronJobs interpret schedules in the cluster's timezone (UTC on most
 managed offerings). Adjust `digest.schedule` accordingly if you expect digests
 to land in a specific local time window.
 
+### Observability, dashboards, and alerts
+
+Keepstack v0.3 introduces first-class Prometheus metrics and a lightweight
+Grafana dashboard to keep an eye on request volume, latency, worker throughput,
+and queue health. Enable the stack by setting `observability.enabled=true` and
+deploying kube-prometheus-stack alongside the chart:
+
+```sh
+helm upgrade --install kube-prom-stack prometheus-community/kube-prometheus-stack \
+  --namespace monitoring --create-namespace --wait
+helm upgrade --install keepstack deploy/charts/keepstack \
+  --namespace keepstack --create-namespace -f deploy/values/dev.yaml --wait
+```
+
+Forward Grafana locally with `just dash-grafana` (defaults to
+`http://localhost:3000`, admin/admin) and open the **Keepstack Overview**
+dashboard. Out of the box it charts:
+
+* API request rate, error percentage, and p50/p95 latency
+* Worker job throughput, parse duration, queue lag, and success rate
+
+PrometheusRule resources fire two warning alerts when the API 5xx rate exceeds
+the configured threshold or when worker job failures spike. Adjust thresholds
+under `observability.alerts` in `values.yaml`.
+
+### Backups, restore drills, and S3 offload
+
+Nightly `pg_dump` backups run via the `keepstack-backup` CronJob whenever
+`backup.enabled` is true. By default they land on a dedicated PVC
+(`keepstack-backups`) with automatic retention. Trigger an on-demand snapshot
+with:
+
+```sh
+just backup-now
+kubectl -n keepstack get jobs | grep keepstack-backup-now
+```
+
+To exercise the disaster-recovery drill, run `just restore-drill` and follow the
+annotated steps: uninstall the release, reinstall Postgres only, execute the
+example restore job, then bring the deployments back online. The reusable
+`scripts/restore-db.sh` helper accepts an explicit dump path or automatically
+selects the most recent archive. S3/minio uploads are also supported—configure
+`backup.storage.kind=s3` along with the bucket, endpoint, and access key
+secrets, and the CronJob will stream the compressed dump directly to object
+storage.
+
+### Suggested resurfacing
+
+The new resurfacer CronJob scores unread links nightly and persists the top
+entries per user into a lightweight `recommendations` table. Enable it with
+`resurfacer.enabled=true`, or trigger a manual run with `just resurfacer-now`.
+The API exposes the curated list at
+`GET /api/recommendations?limit=20`, and the React dashboard now includes a
+**Suggested picks** filter that surfaces long-unread favorites without touching
+your saved searches.
+
+### Optional TLS issuers
+
+Set `tls.enabled=true` to annotate the ingress for cert-manager. A
+self-signed ClusterIssuer ships by default for development clusters, while
+`tls.issuer=letsencrypt` (or `letsencrypt-staging`) provisions ACME HTTP-01
+certificates using the configured contact email. Override the issuer without
+touching the ingress manifest.
+
+## Verification checklist
+
+1. `cd apps/api && go test ./...` – API unit tests and new resurfacer logic
+2. `cd apps/worker && go test ./...` – ingestion pipeline and queue metrics
+3. `cd apps/web && npm run build` – ensure the updated Suggested filter compiles
+4. `helm upgrade --install keepstack deploy/charts/keepstack -n keepstack -f deploy/values/dev.yaml --wait`
+5. `just smoke-v02` – populate the system end-to-end
+6. `just dash-grafana` – inspect the Keepstack Overview dashboard
+7. `just backup-now` and `just restore-drill` – validate database backup + restore workflow
+8. `just resurfacer-now` followed by `curl .../api/recommendations` – verify resurfaced items
+
 Override `digest.schedule` to change when the CronJob fires, update
 `digest.limit` to cap the number of unread links, and set sender/recipient
 addresses that match your SMTP provider. The CronJob uses the shared secrets

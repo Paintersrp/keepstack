@@ -51,3 +51,19 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- define "keepstack.verifySchema.fullname" -}}
 {{- printf "%s-verify-schema" (include "keepstack.fullname" .) | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
+
+{{- define "keepstack.backupPvcName" -}}
+{{- if .Values.backup.storage.pvc.existingClaim -}}
+{{- .Values.backup.storage.pvc.existingClaim -}}
+{{- else -}}
+{{- printf "%s-backups" (include "keepstack.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "keepstack.tlsIssuerName" -}}
+{{- if eq .Values.tls.issuer "selfsigned" -}}
+{{ printf "%s-selfsigned" (include "keepstack.fullname" .) }}
+{{- else -}}
+{{ printf "%s-%s" (include "keepstack.fullname" .) .Values.tls.issuer }}
+{{- end -}}
+{{- end -}}

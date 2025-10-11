@@ -54,6 +54,20 @@ digest:
   sender: "Keepstack Digest <digest@keepstack.local>"
   recipient: "reader@keepstack.local"
 
+backup:
+  enabled: true
+  schedule: "0 3 * * *"
+  retention: 7
+  storage:
+    kind: pvc
+    pvc:
+      size: 5Gi
+
+resurfacer:
+  enabled: true
+  schedule: "30 2 * * *"
+  limit: 20
+
 postgres:
   storage: 5Gi
   username: keepstack
@@ -72,6 +86,10 @@ ingress:
   host: keepstack.localtest.me
   tls: false
 
+tls:
+  enabled: false
+  issuer: selfsigned
+
 observability:
   enabled: true
   grafana:
@@ -85,6 +103,12 @@ observability:
       window: 5m
       threshold: 0.05
       for: 5m
+      severity: warning
+    apiLatency:
+      enabled: true
+      window: 5m
+      thresholdSeconds: 1.5
+      for: 10m
       severity: warning
     workerFailures:
       enabled: true
