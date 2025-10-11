@@ -17,6 +17,7 @@ type Metrics struct {
 	LangDetectLatency prometheus.Histogram
 	LangDetect        *prometheus.CounterVec
 	LangDetectErrors  prometheus.Counter
+	QueueLagSeconds   prometheus.Histogram
 }
 
 // NewMetrics registers worker metrics.
@@ -76,6 +77,12 @@ func NewMetrics() *Metrics {
 			Namespace: namespace,
 			Name:      "lang_detect_errors_total",
 			Help:      "Number of language detection attempts that failed reliability checks.",
+		}),
+		QueueLagSeconds: promauto.NewHistogram(prometheus.HistogramOpts{
+			Namespace: namespace,
+			Name:      "queue_lag_seconds",
+			Help:      "Observed delay between link creation and worker processing.",
+			Buckets:   []float64{1, 5, 15, 30, 60, 120, 300, 600, 900, 1800},
 		}),
 	}
 }

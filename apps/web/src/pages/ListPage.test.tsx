@@ -10,10 +10,9 @@ import { ListPage, type SearchState } from "./ListPage";
 
 const originalFetch = global.fetch;
 const originalConsoleError = console.error;
-let consoleErrorSpy: ReturnType<typeof vi.spyOn> | undefined;
 
 beforeEach(() => {
-  consoleErrorSpy = vi.spyOn(console, "error").mockImplementation((message?: unknown, ...optionalParams: unknown[]) => {
+  vi.spyOn(console, "error").mockImplementation((message?: unknown, ...optionalParams: unknown[]) => {
     if (typeof message === "string" && message.includes("not wrapped in act")) {
       return;
     }
@@ -46,6 +45,7 @@ function renderListPage(initial: Partial<SearchState> = {}) {
       favorite: undefined,
       tags: [],
       page: 1,
+      suggested: initial.suggested,
       ...initial,
     });
 
@@ -69,7 +69,6 @@ async function flushAsyncUpdates() {
 afterEach(() => {
   cleanup();
   global.fetch = originalFetch;
-  consoleErrorSpy?.mockRestore();
   vi.restoreAllMocks();
   console.error = originalConsoleError;
 });

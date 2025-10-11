@@ -1,0 +1,39 @@
+{{- if .Values.resurfacer.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "keepstack.fullname" . }}-resurfacer
+  namespace: {{ include "keepstack.namespace" . }}
+  labels:
+    {{- include "keepstack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: resurfacer
+spec:
+  schedule: {{ .Values.resurfacer.schedule | quote }}
+  successfulJobsHistoryLimit: {{ .Values.resurfacer.successfulJobsHistoryLimit | default 1 }}
+  failedJobsHistoryLimit: {{ .Values.resurfacer.failedJobsHistoryLimit | default 1 }}
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: {{ include "keepstack.fullname" . }}-resurfacer
+            app.kubernetes.io/component: resurfacer
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: {{ include "keepstack.serviceAccountName.api" . }}
+          containers:
+            - name: resurfacer
+              image: {{ printf "%s/%s:%s" .Values.image.registry .Values.image.apiRepository .Values.image.tag }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command:
+                - /app/cron
+                - resurface
+              envFrom:
+                - secretRef:
+                    name: {{ .Values.secrets.name }}
+              env:
+                - name: RESURFACER_LIMIT
+                  value: {{ .Values.resurfacer.limit | quote }}
+              resources:
+                {{- toYaml .Values.resurfacer.resources | nindent 16 }}
+{{- end }}

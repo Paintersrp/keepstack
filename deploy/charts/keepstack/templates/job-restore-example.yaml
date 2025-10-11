@@ -1,0 +1,56 @@
+{{- if .Values.backup.restoreExample.enabled }}
+# Example restore job. Enable with --set backup.restoreExample.enabled=true when you want
+# to perform a disaster-recovery drill. The job reads the most recent backup file from
+# the mounted volume and pipes it into psql using the configured DATABASE_URL.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "keepstack.fullname" . }}-restore
+  namespace: {{ include "keepstack.namespace" . }}
+  labels:
+    {{- include "keepstack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: restore
+spec:
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "keepstack.fullname" . }}-restore
+        app.kubernetes.io/component: restore
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: {{ include "keepstack.serviceAccountName.api" . }}
+      containers:
+        - name: restore
+          image: {{ printf "%s/%s:%s" .Values.image.registry .Values.image.apiRepository .Values.image.tag }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -euo pipefail
+              BACKUP_PATH="${BACKUP_PATH:-{{ .Values.backup.restoreExample.backupPath }}}"
+              if [ -z "$BACKUP_PATH" ]; then
+                BACKUP_PATH=$(ls -1t /backups/keepstack-*.sql.gz | head -n1 || true)
+              fi
+              if [ -z "$BACKUP_PATH" ]; then
+                echo "no backups found" >&2
+                exit 1
+              fi
+              echo "restoring from $BACKUP_PATH"
+              gunzip -c "$BACKUP_PATH" | psql "$DATABASE_URL"
+          envFrom:
+            - secretRef:
+                name: {{ .Values.secrets.name }}
+          env:
+            - name: BACKUP_DIR
+              value: /backups
+            - name: BACKUP_PATH
+              value: {{ .Values.backup.restoreExample.backupPath | quote }}
+          volumeMounts:
+            - name: backup-data
+              mountPath: /backups
+      volumes:
+        - name: backup-data
+          persistentVolumeClaim:
+            claimName: {{ include "keepstack.backupPvcName" . }}
+{{- end }}

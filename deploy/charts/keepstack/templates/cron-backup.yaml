@@ -1,0 +1,81 @@
+{{- if .Values.backup.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "keepstack.fullname" . }}-backup
+  namespace: {{ include "keepstack.namespace" . }}
+  labels:
+    {{- include "keepstack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup
+spec:
+  schedule: {{ .Values.backup.schedule | quote }}
+  successfulJobsHistoryLimit: {{ .Values.backup.successfulJobsHistoryLimit | default 1 }}
+  failedJobsHistoryLimit: {{ .Values.backup.failedJobsHistoryLimit | default 1 }}
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: {{ include "keepstack.fullname" . }}-backup
+            app.kubernetes.io/component: backup
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: {{ include "keepstack.serviceAccountName.api" . }}
+          containers:
+            - name: backup
+              image: {{ printf "%s/%s:%s" .Values.image.registry .Values.image.apiRepository .Values.image.tag }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command:
+                - /app/cron
+                - backup
+              envFrom:
+                - secretRef:
+                    name: {{ .Values.secrets.name }}
+              env:
+                - name: BACKUP_DIR
+                  value: /backups
+                - name: BACKUP_RETENTION
+                  value: {{ .Values.backup.retention | quote }}
+                - name: BACKUP_STORAGE
+                  value: {{ .Values.backup.storage.kind | default "pvc" | quote }}
+              {{- if eq (.Values.backup.storage.kind | default "pvc") "s3" }}
+                - name: BACKUP_KEEP_LOCAL
+                  value: {{ .Values.backup.keepLocal | default "false" | quote }}
+                - name: BACKUP_S3_BUCKET
+                  value: {{ .Values.backup.storage.s3.bucket | quote }}
+                - name: BACKUP_S3_REGION
+                  value: {{ .Values.backup.storage.s3.region | default "us-east-1" | quote }}
+                - name: BACKUP_S3_ENDPOINT
+                  value: {{ .Values.backup.storage.s3.endpoint | quote }}
+                - name: BACKUP_S3_PREFIX
+                  value: {{ .Values.backup.storage.s3.prefix | quote }}
+              {{- if .Values.backup.storage.s3.credentialsSecret }}
+                - name: BACKUP_S3_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.backup.storage.s3.credentialsSecret }}
+                      key: {{ .Values.backup.storage.s3.accessKeyKey | default "accessKey" }}
+                - name: BACKUP_S3_SECRET_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.backup.storage.s3.credentialsSecret }}
+                      key: {{ .Values.backup.storage.s3.secretKeyKey | default "secretKey" }}
+              {{- end }}
+              {{- else }}
+                - name: BACKUP_KEEP_LOCAL
+                  value: "true"
+              {{- end }}
+              volumeMounts:
+                - name: backup-data
+                  mountPath: /backups
+              resources:
+                {{- toYaml .Values.backup.resources | nindent 16 }}
+          volumes:
+            - name: backup-data
+              {{- if eq (.Values.backup.storage.kind | default "pvc") "pvc" }}
+                persistentVolumeClaim:
+                  claimName: {{ include "keepstack.backupPvcName" . }}
+              {{- else }}
+                emptyDir: {}
+              {{- end }}
+{{- end }}

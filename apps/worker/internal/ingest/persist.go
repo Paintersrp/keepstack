@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -25,22 +26,27 @@ func NewStore(pool *pgxpool.Pool) *Store {
 
 // Link represents the minimal data needed for ingestion.
 type Link struct {
-	ID  uuid.UUID
-	URL string
+	ID        uuid.UUID
+	URL       string
+	CreatedAt time.Time
 }
 
 // LookupLink retrieves a link record by identifier.
 func (s *Store) LookupLink(ctx context.Context, id uuid.UUID) (Link, error) {
-	row := s.pool.QueryRow(ctx, `SELECT id, url FROM links WHERE id = $1`, pgtype.UUID{Bytes: id, Valid: true})
+	row := s.pool.QueryRow(ctx, `SELECT id, url, created_at FROM links WHERE id = $1`, pgtype.UUID{Bytes: id, Valid: true})
 	var link Link
 	var idVal pgtype.UUID
-	if err := row.Scan(&idVal, &link.URL); err != nil {
+	var created pgtype.Timestamptz
+	if err := row.Scan(&idVal, &link.URL, &created); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return Link{}, fmt.Errorf("link not found: %w", err)
 		}
 		return Link{}, fmt.Errorf("query link: %w", err)
 	}
 	link.ID = uuid.UUID(idVal.Bytes)
+	if created.Valid {
+		link.CreatedAt = created.Time
+	}
 	return link, nil
 }
 

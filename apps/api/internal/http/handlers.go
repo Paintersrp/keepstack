@@ -37,6 +37,7 @@ type queryProvider interface {
 	CreateLink(context.Context, db.CreateLinkParams) (db.CreateLinkRow, error)
 	ListLinks(context.Context, db.ListLinksParams) ([]db.ListLinksRow, error)
 	CountLinks(context.Context, db.CountLinksParams) (int64, error)
+	ListRecommendationsForUser(context.Context, db.ListRecommendationsForUserParams) ([]db.ListRecommendationsForUserRow, error)
 	GetTagByName(context.Context, string) (db.Tag, error)
 	ListTags(context.Context) ([]db.Tag, error)
 	CreateTag(context.Context, string) (db.Tag, error)
@@ -94,6 +95,7 @@ func (s *Server) RegisterRoutes(e *echo.Echo) {
 	api := e.Group("/api")
 	api.POST("/links", s.handleCreateLink)
 	api.GET("/links", s.handleListLinks)
+	api.GET("/recommendations", s.handleListRecommendations)
 
 	api.GET("/tags", s.handleListTags)
 	api.POST("/tags", s.handleCreateTag)
@@ -450,6 +452,116 @@ func (s *Server) handleListLinks(c echo.Context) error {
 		Limit:      limit,
 		Offset:     offset,
 	})
+}
+
+func (s *Server) handleListRecommendations(c echo.Context) error {
+	limit := 20
+	if raw := strings.TrimSpace(c.QueryParam("limit")); raw != "" {
+		if value, err := strconv.Atoi(raw); err == nil && value > 0 {
+			limit = value
+		}
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	ctx := c.Request().Context()
+	rows, err := s.queries.ListRecommendationsForUser(ctx, db.ListRecommendationsForUserParams{
+		UserID: uuidToPg(s.cfg.DevUserID),
+		Limit:  int32(limit),
+	})
+	if err != nil {
+		s.metrics.LinkListFailure.Inc()
+		return c.JSON(stdhttp.StatusInternalServerError, map[string]string{"error": "failed to load recommendations"})
+	}
+
+	responses := make([]linkResponse, 0, len(rows))
+	for _, row := range rows {
+		resp, err := s.buildRecommendationResponse(ctx, row)
+		if err != nil {
+			s.metrics.LinkListFailure.Inc()
+			return c.JSON(stdhttp.StatusInternalServerError, map[string]string{"error": "failed to expand recommendations"})
+		}
+		responses = append(responses, resp)
+	}
+
+	s.metrics.LinkListSuccess.Inc()
+
+	return c.JSON(stdhttp.StatusOK, map[string]any{
+		"items": responses,
+		"limit": limit,
+		"count": len(responses),
+	})
+}
+
+func (s *Server) buildRecommendationResponse(ctx context.Context, row db.ListRecommendationsForUserRow) (linkResponse, error) {
+	tags, err := s.queries.ListTagsForLink(ctx, row.ID)
+	if err != nil {
+		return linkResponse{}, err
+	}
+
+	tagResponses := make([]tagResponse, 0, len(tags))
+	for _, tag := range tags {
+		tagResponses = append(tagResponses, tagResponse{ID: tag.ID, Name: tag.Name})
+	}
+
+	highlights, err := s.queries.ListHighlightsByLink(ctx, row.ID)
+	if err != nil {
+		return linkResponse{}, err
+	}
+
+	highlightResponses := make([]highlightResponse, 0, len(highlights))
+	for _, item := range highlights {
+		highlightResponses = append(highlightResponses, toHighlightResponse(item))
+	}
+
+	var readAt *time.Time
+	if row.ReadAt.Valid {
+		t := row.ReadAt.Time
+		readAt = &t
+	}
+
+	title := ""
+	if row.Title.Valid {
+		title = row.Title.String
+	}
+
+	sourceDomain := ""
+	if row.SourceDomain.Valid {
+		sourceDomain = row.SourceDomain.String
+	}
+
+	archiveTitle := ""
+	if row.ArchiveTitle.Valid {
+		archiveTitle = row.ArchiveTitle.String
+	}
+
+	byline := ""
+	if row.Byline.Valid {
+		byline = row.Byline.String
+	}
+
+	lang := ""
+	if row.Lang.Valid {
+		lang = row.Lang.String
+	}
+
+	return linkResponse{
+		ID:            uuidFromPg(row.ID).String(),
+		URL:           row.Url,
+		Title:         title,
+		SourceDomain:  sourceDomain,
+		Favorite:      row.Favorite,
+		CreatedAt:     row.CreatedAt.Time,
+		ReadAt:        readAt,
+		ArchiveTitle:  archiveTitle,
+		Byline:        byline,
+		Lang:          lang,
+		WordCount:     int(row.WordCount),
+		ExtractedText: row.ExtractedText,
+		Tags:          tagResponses,
+		Highlights:    highlightResponses,
+	}, nil
 }
 
 func (s *Server) handleListTags(c echo.Context) error {

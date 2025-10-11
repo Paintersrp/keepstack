@@ -29,6 +29,14 @@ func (p *Processor) Process(ctx context.Context, linkID uuid.UUID) error {
 		return fmt.Errorf("lookup link: %w", err)
 	}
 
+	if !link.CreatedAt.IsZero() {
+		lag := time.Since(link.CreatedAt)
+		if lag < 0 {
+			lag = 0
+		}
+		p.metrics.QueueLagSeconds.Observe(lag.Seconds())
+	}
+
 	fetchStart := time.Now()
 	result, err := p.fetcher.Fetch(ctx, link.URL)
 	if err != nil {

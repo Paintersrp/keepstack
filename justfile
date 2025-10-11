@@ -39,12 +39,15 @@ helm-dev:
 	helm upgrade --install keepstack {{CHART}} -n {{NAMESPACE}} --create-namespace -f {{DEV_VALUES}} --set image.registry={{REGISTRY}} --set image.tag={{TAG}}
 
 logs:
-	kubectl -n {{NAMESPACE}} logs deploy/keepstack-api -f
+        kubectl -n {{NAMESPACE}} logs deploy/keepstack-api -f
 
 seed:
-	curl -fsS -X POST "http://keepstack.localtest.me:8080/api/links" \
-	-H 'Content-Type: application/json' \
-	-d '{"url":"https://example.com","title":"Example Domain"}'
+        curl -fsS -X POST "http://keepstack.localtest.me:8080/api/links" \
+        -H 'Content-Type: application/json' \
+        -d '{"url":"https://example.com","title":"Example Domain"}'
+
+dash-grafana:
+        kubectl -n monitoring port-forward svc/grafana 3000:80
 
 smoke:
         {{justfile_directory()}}/scripts/smoke.sh
@@ -55,6 +58,15 @@ smoke-v02:
 
 digest-once:
         kubectl -n {{NAMESPACE}} create job digest-once-$(date +%s) --from=cronjob/keepstack-digest
+
+backup-now:
+        kubectl -n {{NAMESPACE}} create job keepstack-backup-now-$(date +%s) --from=cronjob/keepstack-backup
+
+resurfacer-now:
+        kubectl -n {{NAMESPACE}} create job keepstack-resurfacer-now-$(date +%s) --from=cronjob/keepstack-resurfacer
+
+restore-drill:
+        {{justfile_directory()}}/scripts/restore-drill.sh
 
 verify-schema:
         kubectl -n {{NAMESPACE}} delete job {{VERIFY_JOB}} --ignore-not-found
