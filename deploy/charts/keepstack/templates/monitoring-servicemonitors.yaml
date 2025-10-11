@@ -1,0 +1,43 @@
+{{- if .Values.observability.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "keepstack.fullname" . }}-api
+  namespace: {{ include "keepstack.namespace" . }}
+  labels:
+    {{- include "keepstack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  jobLabel: app.kubernetes.io/component
+  namespaceSelector:
+    matchNames:
+      - {{ include "keepstack.namespace" . }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "keepstack.fullname" . }}-api
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "keepstack.fullname" . }}-worker
+  namespace: {{ include "keepstack.namespace" . }}
+  labels:
+    {{- include "keepstack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  jobLabel: app.kubernetes.io/component
+  namespaceSelector:
+    matchNames:
+      - {{ include "keepstack.namespace" . }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "keepstack.fullname" . }}-worker
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s
+{{- end }}

@@ -1,0 +1,45 @@
+{{- if .Values.observability.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "keepstack.fullname" . }}
+  namespace: {{ include "keepstack.namespace" . }}
+  labels:
+    {{- include "keepstack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: monitoring
+spec:
+  groups:
+    - name: keepstack.api
+      rules:
+        {{- if .Values.observability.alerts.apiErrorRate.enabled }}
+        - alert: KeepstackAPIElevatedErrors
+          expr: |
+            (sum(rate(keepstack_api_http_requests_non_2xx_total[{{ .Values.observability.alerts.apiErrorRate.window }}])) /
+            sum(rate(keepstack_api_http_requests_total[{{ .Values.observability.alerts.apiErrorRate.window }}])))
+            > {{ .Values.observability.alerts.apiErrorRate.threshold }}
+          for: {{ .Values.observability.alerts.apiErrorRate.for }}
+          labels:
+            severity: {{ .Values.observability.alerts.apiErrorRate.severity }}
+          annotations:
+            summary: "Keepstack API error rate above {{ mul 100 .Values.observability.alerts.apiErrorRate.threshold }}%"
+            description: |
+              The Keepstack API is returning non-2xx responses above the configured threshold.
+              Investigate recent deployments or upstream dependencies.
+        {{- end }}
+    - name: keepstack.worker
+      rules:
+        {{- if .Values.observability.alerts.workerFailures.enabled }}
+        - alert: KeepstackWorkerFailures
+          expr: |
+            increase(keepstack_worker_jobs_failed_total[{{ .Values.observability.alerts.workerFailures.window }}])
+            > {{ .Values.observability.alerts.workerFailures.threshold }}
+          for: {{ .Values.observability.alerts.workerFailures.for }}
+          labels:
+            severity: {{ .Values.observability.alerts.workerFailures.severity }}
+          annotations:
+            summary: "Keepstack worker failures above {{ .Values.observability.alerts.workerFailures.threshold }} in {{ .Values.observability.alerts.workerFailures.window }}"
+            description: |
+              The Keepstack worker is reporting job failures. Inspect the worker logs for details
+              and confirm external dependencies such as Chrome and Postgres are healthy.
+        {{- end }}
+{{- end }}

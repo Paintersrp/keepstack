@@ -1,0 +1,113 @@
+{{- if .Values.observability.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "keepstack.fullname" . }}-grafana-dashboard
+  namespace: {{ include "keepstack.namespace" . }}
+  labels:
+    {{- include "keepstack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: monitoring
+    grafana_dashboard: "1"
+data:
+  keepstack-overview.json: |
+    {
+      "title": "Keepstack Overview",
+      "uid": "keepstack-overview",
+      "schemaVersion": 38,
+      "version": 1,
+      "refresh": "30s",
+      "time": {
+        "from": "now-1h",
+        "to": "now"
+      },
+      "panels": [
+        {
+          "type": "graph",
+          "title": "API Request Volume",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "expr": "sum by (route) (rate(keepstack_api_http_requests_total[5m]))",
+              "legendFormat": "{{"{{"}}route{{"}}"}}"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+          "lines": true,
+          "linewidth": 2
+        },
+        {
+          "type": "graph",
+          "title": "API Error Rate",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "expr": "sum(rate(keepstack_api_http_requests_non_2xx_total[5m])) / sum(rate(keepstack_api_http_requests_total[5m]))",
+              "legendFormat": "Error rate"
+            }
+          ],
+          "yaxes": [
+            {"format": "percentunit", "label": "Errors", "logBase": 1},
+            {"format": "short", "logBase": 1}
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+          "lines": true,
+          "linewidth": 2
+        },
+        {
+          "type": "graph",
+          "title": "Worker Throughput",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "expr": "rate(keepstack_worker_jobs_processed_total[5m])",
+              "legendFormat": "Processed"
+            },
+            {
+              "expr": "rate(keepstack_worker_jobs_failed_total[5m])",
+              "legendFormat": "Failed"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+          "lines": true,
+          "linewidth": 2
+        },
+        {
+          "type": "graph",
+          "title": "Worker Latency (p95)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum by (le) (rate(keepstack_worker_fetch_duration_seconds_bucket[5m])))",
+              "legendFormat": "Fetch"
+            },
+            {
+              "expr": "histogram_quantile(0.95, sum by (le) (rate(keepstack_worker_persist_duration_seconds_bucket[5m])))",
+              "legendFormat": "Persist"
+            }
+          ],
+          "yaxes": [
+            {"format": "s", "label": "Seconds", "logBase": 1},
+            {"format": "short", "logBase": 1}
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+          "lines": true,
+          "linewidth": 2
+        }
+      ],
+      "templating": {
+        "list": []
+      }
+    }
+{{- end }}
