@@ -67,8 +67,8 @@ keepstack/
 ## Quickstart
 
 1. **Prerequisites**
-   - Docker with Buildx, k3d, kubectl, Helm, and Just installed
-   - Access to a container registry (defaults to GHCR)
+   - Review the [comprehensive tooling guide](docs/prerequisites.md) to install Docker with Buildx, k3d, kubectl, Helm, and Just
+   - Ensure you can authenticate to a container registry (defaults to GHCR)
 
 2. **Bootstrap a dev cluster and install ingress-nginx**
 
