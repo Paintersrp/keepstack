@@ -75,11 +75,12 @@ spec:
               resources:
                 {{- toYaml .Values.backup.resources | nindent 16 }}
           volumes:
+{{- if eq (.Values.backup.storage.kind | default "pvc") "pvc" }}
             - name: backup-data
-              {{- if eq (.Values.backup.storage.kind | default "pvc") "pvc" }}
-                persistentVolumeClaim:
-                  claimName: {{ include "keepstack.backupPvcName" . }}
-              {{- else }}
-                emptyDir: {}
-              {{- end }}
+              persistentVolumeClaim:
+                claimName: {{ include "keepstack.backupPvcName" . }}
+{{- else }}
+            - name: backup-data
+              emptyDir: {}
+{{- end }}
 {{- end }}
