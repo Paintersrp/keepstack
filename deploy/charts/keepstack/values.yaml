@@ -72,6 +72,8 @@ digest:
 
 api:
   replicas: 2
+  terminationGracePeriodSeconds: 30
+  shutdownDelaySeconds: 5
   autoscaling:
     minReplicas: 2
     maxReplicas: 6
@@ -104,6 +106,8 @@ api:
 
 worker:
   replicas: 1
+  terminationGracePeriodSeconds: 30
+  shutdownDelaySeconds: 5
   metricsPort: 9090
   healthPort: 8081
   autoscaling:
