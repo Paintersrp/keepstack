@@ -92,6 +92,7 @@ tls:
 
 observability:
   enabled: true
+  prometheusRelease: kube-prom-stack
   grafana:
     adminUser: admin
     adminPassword: admin

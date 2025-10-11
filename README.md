@@ -144,6 +144,10 @@ PrometheusRule resources fire two warning alerts when the API 5xx rate exceeds
 the configured threshold or when worker job failures spike. Adjust thresholds
 under `observability.alerts` in `values.yaml`.
 
+If your Prometheus Operator release uses a different Helm release name, set
+`observability.prometheusRelease` to match so the ServiceMonitor and
+PrometheusRule resources are picked up automatically.
+
 ### Backups, restore drills, and S3 offload
 
 Nightly `pg_dump` backups run via the `keepstack-backup` CronJob whenever
