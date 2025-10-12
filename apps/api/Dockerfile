@@ -28,5 +28,6 @@ WORKDIR /app
 COPY --from=builder /out/api /app/api
 COPY --from=builder /out/migrate /app/migrate
 COPY --from=builder /out/cron /app/cron
+COPY db/migrations /app/db/migrations
 EXPOSE 8080
 ENTRYPOINT ["/app/api"]
