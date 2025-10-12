@@ -75,16 +75,14 @@ keepstack/
    ```sh
    just dev-up
    kubectl create ns keepstack || true
-
-   kubectl -n keepstack create secret generic keepstack-secrets \
-     --from-literal=DATABASE_URL='postgres://keepstack:keepstack@postgres:5432/keepstack?sslmode=disable' \
-     --from-literal=NATS_URL='nats://nats:4222' \
-     --from-literal=JWT_SECRET='devdevdevdevdevdevdevdevdevdevdevdev' \
-     --from-literal=SMTP_URL='smtp://keepstack:changeme@smtp.keepstack.local:587' \
-     --from-literal=DIGEST_SENDER='Keepstack Digest <digest@keepstack.local>' \
-     --from-literal=DIGEST_RECIPIENT='reader@keepstack.local' \
-     --from-literal=DIGEST_LIMIT='10' || true
 ```
+
+   The Helm chart manages the `keepstack-secrets` Secret when
+   `secrets.create=true` (the default in `deploy/values/dev.yaml`). Update that
+   file to change the bootstrap credentials instead of creating the Secret by
+   hand. If you previously created the Secret manually, delete it with
+   `kubectl -n keepstack delete secret keepstack-secrets` before running
+   `just helm-dev` so Helm can recreate it with the proper ownership metadata.
 
    The `deploy/values/dev.yaml` file enables a scheduled digest CronJob. Adjust
    `digest.schedule`, `digest.limit`, `digest.sender`, and `digest.recipient`
@@ -299,6 +297,13 @@ Follow the workflow below to exercise the full v0.3 deployment path, including o
 ```sh
 just dev-up
 kubectl create ns keepstack || true
+```
+
+If you prefer to manage the Secret outside of Helm, set
+`secrets.create=false` in your values file and add the required ownership
+metadata when creating it:
+
+```sh
 kubectl -n keepstack create secret generic keepstack-secrets \
   --from-literal=DATABASE_URL='postgres://keepstack:keepstack@postgres:5432/keepstack?sslmode=disable' \
   --from-literal=NATS_URL='nats://nats:4222' \
@@ -306,7 +311,12 @@ kubectl -n keepstack create secret generic keepstack-secrets \
   --from-literal=SMTP_URL='smtp://keepstack:changeme@smtp.keepstack.local:587' \
   --from-literal=DIGEST_SENDER='Keepstack Digest <digest@keepstack.local>' \
   --from-literal=DIGEST_RECIPIENT='reader@keepstack.local' \
-  --from-literal=DIGEST_LIMIT='10' || true
+  --from-literal=DIGEST_LIMIT='10'
+kubectl -n keepstack annotate --overwrite secret keepstack-secrets \
+  meta.helm.sh/release-name=keepstack \
+  meta.helm.sh/release-namespace=keepstack
+kubectl -n keepstack label --overwrite secret keepstack-secrets \
+  app.kubernetes.io/managed-by=Helm
 ```
 
 Ensure your values file enables the v0.3 automation before building. The provided `deploy/values/dev.yaml` already sets:
