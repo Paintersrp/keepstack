@@ -2,8 +2,6 @@ module github.com/example/keepstack/apps/worker
 
 go 1.25
 
-toolchain go1.25
-
 require (
 	github.com/abadojack/whatlanggo v1.0.1
 	github.com/go-shiori/go-readability v0.0.0-20250217085726-9f5bf5ca7612
