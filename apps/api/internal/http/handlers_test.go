@@ -18,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/labstack/echo/v4"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"golang.org/x/time/rate"
 
 	"github.com/example/keepstack/apps/api/internal/config"
@@ -93,6 +94,141 @@ func TestHandleCreateLinkInvalidURL(t *testing.T) {
 	}
 	if publisher.called {
 		t.Fatalf("expected publisher not to be invoked")
+	}
+}
+
+func TestHandleUpdateLinkFavorite(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{DevUserID: uuid.MustParse("cccccccc-cccc-cccc-cccc-cccccccccccc")}
+	linkID := uuid.New()
+	createdAt := time.Unix(1_700_000_000, 0).UTC()
+
+	metrics := newTestMetrics()
+	ensureCalled := false
+
+	queries := &mockQueries{
+		getLinkFn: func(ctx context.Context, id pgtype.UUID) (db.GetLinkRow, error) {
+			ensureCalled = true
+			if uuidFromPg(id) != linkID {
+				return db.GetLinkRow{}, fmt.Errorf("unexpected link id: %s", uuidFromPg(id))
+			}
+			return db.GetLinkRow{
+				ID:        uuidToPg(linkID),
+				UserID:    uuidToPg(cfg.DevUserID),
+				Url:       "https://example.com",
+				CreatedAt: pgtype.Timestamptz{Time: createdAt, Valid: true},
+				Favorite:  false,
+			}, nil
+		},
+		updateLinkFavoriteFn: func(ctx context.Context, params db.UpdateLinkFavoriteParams) (db.UpdateLinkFavoriteRow, error) {
+			if uuidFromPg(params.ID) != linkID {
+				return db.UpdateLinkFavoriteRow{}, fmt.Errorf("unexpected update id: %s", uuidFromPg(params.ID))
+			}
+			if !params.Favorite {
+				return db.UpdateLinkFavoriteRow{}, fmt.Errorf("expected favorite to be true")
+			}
+			return db.UpdateLinkFavoriteRow{
+				ID:            uuidToPg(linkID),
+				UserID:        uuidToPg(cfg.DevUserID),
+				Url:           "https://example.com",
+				Title:         pgtype.Text{String: "Example article", Valid: true},
+				SourceDomain:  pgtype.Text{String: "example.com", Valid: true},
+				CreatedAt:     pgtype.Timestamptz{Time: createdAt, Valid: true},
+				Favorite:      true,
+				ArchiveTitle:  "Archived article",
+				ArchiveByline: "Author",
+				Lang:          "en",
+				WordCount:     1200,
+				ExtractedText: "Summary",
+				TagIds:        []int32{1},
+				TagNames:      []string{"reading"},
+				Highlights:    []byte("[]"),
+			}, nil
+		},
+	}
+
+	srv := &Server{cfg: cfg, queries: queries, metrics: metrics}
+
+	e := echo.New()
+	srv.RegisterRoutes(e)
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/links/"+linkID.String(), strings.NewReader(`{"favorite":true}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	if !ensureCalled {
+		t.Fatalf("expected ensureLinkAccess to be called")
+	}
+	if got := testutil.ToFloat64(metrics.LinkUpdateSuccess); got != 1 {
+		t.Fatalf("unexpected success metric: got %v want 1", got)
+	}
+	if got := testutil.ToFloat64(metrics.LinkUpdateFailure); got != 0 {
+		t.Fatalf("unexpected failure metric: got %v want 0", got)
+	}
+
+	var resp linkResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.ID != linkID.String() {
+		t.Fatalf("unexpected link id: got %s want %s", resp.ID, linkID)
+	}
+	if !resp.Favorite {
+		t.Fatalf("expected favorite to be true")
+	}
+}
+
+func TestHandleUpdateLinkFavoriteNotFound(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{DevUserID: uuid.MustParse("dddddddd-dddd-dddd-dddd-dddddddddddd")}
+	linkID := uuid.New()
+
+	metrics := newTestMetrics()
+
+	queries := &mockQueries{
+		getLinkFn: func(ctx context.Context, id pgtype.UUID) (db.GetLinkRow, error) {
+			if uuidFromPg(id) != linkID {
+				return db.GetLinkRow{}, fmt.Errorf("unexpected link id: %s", uuidFromPg(id))
+			}
+			return db.GetLinkRow{
+				ID:        uuidToPg(linkID),
+				UserID:    uuidToPg(uuid.MustParse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee")),
+				Url:       "https://example.com",
+				CreatedAt: pgtype.Timestamptz{Time: time.Now(), Valid: true},
+				Favorite:  false,
+			}, nil
+		},
+	}
+
+	srv := &Server{cfg: cfg, queries: queries, metrics: metrics}
+
+	e := echo.New()
+	srv.RegisterRoutes(e)
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/links/"+linkID.String(), strings.NewReader(`{"favorite":false}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d", http.StatusNotFound, rec.Code)
+	}
+	if queries.updateLinkFavoriteCalled {
+		t.Fatalf("expected UpdateLinkFavorite not to be called")
+	}
+	if got := testutil.ToFloat64(metrics.LinkUpdateFailure); got != 1 {
+		t.Fatalf("unexpected failure metric: got %v want 1", got)
+	}
+	if got := testutil.ToFloat64(metrics.LinkUpdateSuccess); got != 0 {
+		t.Fatalf("unexpected success metric: got %v want 0", got)
 	}
 }
 
@@ -859,6 +995,7 @@ type mockQueries struct {
 	createLinkFn                 func(context.Context, db.CreateLinkParams) (db.CreateLinkRow, error)
 	listLinksFn                  func(context.Context, db.ListLinksParams) ([]db.ListLinksRow, error)
 	countLinksFn                 func(context.Context, db.CountLinksParams) (int64, error)
+	updateLinkFavoriteFn         func(context.Context, db.UpdateLinkFavoriteParams) (db.UpdateLinkFavoriteRow, error)
 	listRecommendationsForUserFn func(context.Context, db.ListRecommendationsForUserParams) ([]db.ListRecommendationsForUserRow, error)
 	createClaimFn                func(context.Context, db.CreateClaimParams) (db.CreateClaimRow, error)
 	getTagByNameFn               func(context.Context, string) (db.Tag, error)
@@ -876,10 +1013,11 @@ type mockQueries struct {
 	updateHighlightFn            func(context.Context, db.UpdateHighlightParams) (db.Highlight, error)
 	deleteHighlightFn            func(context.Context, pgtype.UUID) error
 
-	createLinkCalled      bool
-	createClaimCalled     bool
-	createTagCalled       bool
-	createHighlightCalled bool
+	createLinkCalled         bool
+	createClaimCalled        bool
+	createTagCalled          bool
+	createHighlightCalled    bool
+	updateLinkFavoriteCalled bool
 }
 
 func (m *mockQueries) CreateLink(ctx context.Context, params db.CreateLinkParams) (db.CreateLinkRow, error) {
@@ -909,6 +1047,14 @@ func (m *mockQueries) CountLinks(ctx context.Context, params db.CountLinksParams
 		return 0, fmt.Errorf("unexpected CountLinks call")
 	}
 	return m.countLinksFn(ctx, params)
+}
+
+func (m *mockQueries) UpdateLinkFavorite(ctx context.Context, params db.UpdateLinkFavoriteParams) (db.UpdateLinkFavoriteRow, error) {
+	m.updateLinkFavoriteCalled = true
+	if m.updateLinkFavoriteFn == nil {
+		return db.UpdateLinkFavoriteRow{}, fmt.Errorf("unexpected UpdateLinkFavorite call")
+	}
+	return m.updateLinkFavoriteFn(ctx, params)
 }
 
 func (m *mockQueries) CreateClaim(ctx context.Context, params db.CreateClaimParams) (db.CreateClaimRow, error) {
@@ -1042,6 +1188,8 @@ func newTestMetrics() *observability.Metrics {
 		LinkCreateFailure:          prometheus.NewCounter(prometheus.CounterOpts{Name: "test_link_create_failure_total", Help: ""}),
 		LinkListSuccess:            prometheus.NewCounter(prometheus.CounterOpts{Name: "test_link_list_success_total", Help: ""}),
 		LinkListFailure:            prometheus.NewCounter(prometheus.CounterOpts{Name: "test_link_list_failure_total", Help: ""}),
+		LinkUpdateSuccess:          prometheus.NewCounter(prometheus.CounterOpts{Name: "test_link_update_success_total", Help: ""}),
+		LinkUpdateFailure:          prometheus.NewCounter(prometheus.CounterOpts{Name: "test_link_update_failure_total", Help: ""}),
 		ClaimCreateSuccess:         prometheus.NewCounter(prometheus.CounterOpts{Name: "test_claim_create_success_total", Help: ""}),
 		ClaimCreateFailure:         prometheus.NewCounter(prometheus.CounterOpts{Name: "test_claim_create_failure_total", Help: ""}),
 		ReadinessFailure:           prometheus.NewCounter(prometheus.CounterOpts{Name: "test_readiness_failure_total", Help: ""}),

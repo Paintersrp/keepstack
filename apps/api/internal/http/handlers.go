@@ -37,6 +37,7 @@ type queryProvider interface {
 	CreateLink(context.Context, db.CreateLinkParams) (db.CreateLinkRow, error)
 	ListLinks(context.Context, db.ListLinksParams) ([]db.ListLinksRow, error)
 	CountLinks(context.Context, db.CountLinksParams) (int64, error)
+	UpdateLinkFavorite(context.Context, db.UpdateLinkFavoriteParams) (db.UpdateLinkFavoriteRow, error)
 	ListRecommendationsForUser(context.Context, db.ListRecommendationsForUserParams) ([]db.ListRecommendationsForUserRow, error)
 	CreateClaim(context.Context, db.CreateClaimParams) (db.CreateClaimRow, error)
 	GetTagByName(context.Context, string) (db.Tag, error)
@@ -96,6 +97,7 @@ func (s *Server) RegisterRoutes(e *echo.Echo) {
 	api := e.Group("/api")
 	api.POST("/links", s.handleCreateLink)
 	api.GET("/links", s.handleListLinks)
+	api.PATCH("/links/:id", s.handleUpdateLink)
 	api.GET("/recommendations", s.handleListRecommendations)
 	api.POST("/claims", s.handleCreateClaim)
 
@@ -231,6 +233,11 @@ type createLinkRequest struct {
 	Favorite *bool   `json:"favorite"`
 }
 
+type updateLinkRequest struct {
+	Favorite *bool    `json:"favorite"`
+	Tags     []string `json:"tags"`
+}
+
 type linkResponse struct {
 	ID            string              `json:"id"`
 	URL           string              `json:"url"`
@@ -360,6 +367,69 @@ func (s *Server) handleCreateLink(c echo.Context) error {
 		"id":  linkID.String(),
 		"url": normalizedURL,
 	})
+}
+
+func (s *Server) handleUpdateLink(c echo.Context) error {
+	linkID, err := parseUUIDParam(c.Param("id"))
+	if err != nil {
+		s.metrics.LinkUpdateFailure.Inc()
+		return c.JSON(stdhttp.StatusBadRequest, map[string]string{"error": "invalid link id"})
+	}
+
+	var req updateLinkRequest
+	if err := c.Bind(&req); err != nil {
+		s.metrics.LinkUpdateFailure.Inc()
+		return c.JSON(stdhttp.StatusBadRequest, map[string]string{"error": "invalid payload"})
+	}
+
+	if req.Favorite == nil {
+		s.metrics.LinkUpdateFailure.Inc()
+		return c.JSON(stdhttp.StatusBadRequest, map[string]string{"error": "favorite is required"})
+	}
+
+	if _, err := s.ensureLinkAccess(c.Request().Context(), linkID); err != nil {
+		s.metrics.LinkUpdateFailure.Inc()
+		return respondWithError(c, err)
+	}
+
+	row, err := s.queries.UpdateLinkFavorite(c.Request().Context(), db.UpdateLinkFavoriteParams{
+		Favorite: *req.Favorite,
+		ID:       uuidToPg(linkID),
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			s.metrics.LinkUpdateFailure.Inc()
+			return c.JSON(stdhttp.StatusNotFound, map[string]string{"error": "link not found"})
+		}
+		s.metrics.LinkUpdateFailure.Inc()
+		return c.JSON(stdhttp.StatusInternalServerError, map[string]string{"error": "failed to update link"})
+	}
+
+	response, err := toLinkResponse(db.ListLinksRow{
+		ID:            row.ID,
+		UserID:        row.UserID,
+		Url:           row.Url,
+		Title:         row.Title,
+		SourceDomain:  row.SourceDomain,
+		CreatedAt:     row.CreatedAt,
+		ReadAt:        row.ReadAt,
+		Favorite:      row.Favorite,
+		ArchiveTitle:  row.ArchiveTitle,
+		ArchiveByline: row.ArchiveByline,
+		Lang:          row.Lang,
+		WordCount:     row.WordCount,
+		ExtractedText: row.ExtractedText,
+		TagIds:        row.TagIds,
+		TagNames:      row.TagNames,
+		Highlights:    row.Highlights,
+	})
+	if err != nil {
+		s.metrics.LinkUpdateFailure.Inc()
+		return c.JSON(stdhttp.StatusInternalServerError, map[string]string{"error": "failed to format link"})
+	}
+
+	s.metrics.LinkUpdateSuccess.Inc()
+	return c.JSON(stdhttp.StatusOK, response)
 }
 
 func (s *Server) handleCreateClaim(c echo.Context) error {
