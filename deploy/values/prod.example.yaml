@@ -4,6 +4,7 @@ image:
   registry: ghcr.io/YOUR_ORG
   tag: "sha-<commit>"
   pullPolicy: IfNotPresent
+  pullSecrets: []
 
 secrets:
   create: true

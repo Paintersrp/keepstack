@@ -20,6 +20,10 @@ spec:
             app.kubernetes.io/component: digest
         spec:
           restartPolicy: OnFailure
+{{- with .Values.image.pullSecrets }}
+          imagePullSecrets:
+{{ toYaml . | nindent 12 }}
+{{- end }}
           containers:
             - name: digest
               image: {{ printf "%s/%s:%s" .Values.image.registry .Values.image.apiRepository .Values.image.tag }}

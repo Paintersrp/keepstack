@@ -23,6 +23,10 @@ spec:
         app.kubernetes.io/component: migrate
     spec:
       serviceAccountName: {{ include "keepstack.serviceAccountName.migrator" . }}
+{{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+{{ toYaml . | nindent 8 }}
+{{- end }}
       restartPolicy: OnFailure
       containers:
         - name: migrate

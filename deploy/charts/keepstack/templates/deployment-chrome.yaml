@@ -18,6 +18,10 @@ spec:
         app.kubernetes.io/name: {{ include "keepstack.fullname" . }}-chrome
         app.kubernetes.io/component: chrome
     spec:
+{{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+{{ toYaml . | nindent 8 }}
+{{- end }}
       containers:
         - name: chrome
           image: {{ .Values.chrome.image }}

@@ -18,6 +18,10 @@ spec:
         app.kubernetes.io/component: worker
     spec:
       serviceAccountName: {{ include "keepstack.serviceAccountName.worker" . }}
+{{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+{{ toYaml . | nindent 8 }}
+{{- end }}
       terminationGracePeriodSeconds: {{ .Values.worker.terminationGracePeriodSeconds }}
       containers:
         - name: worker

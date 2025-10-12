@@ -4,6 +4,7 @@ image:
   registry: ghcr.io/YOUR_GH_USERNAME_OR_ORG
   tag: "sha-CHANGE-ME"
   pullPolicy: IfNotPresent
+  pullSecrets: []
 
 secrets:
   create: true
