@@ -290,6 +290,15 @@ values out of Helm overrides.
    echo "Open: http://keepstack.localtest.me:8080"
    ```
 
+> 💡 Prefer to let Make orchestrate the workflow? Run `make bootstrap-dev` to
+> sequentially create the k3d cluster, build (or `build-local` when available),
+> push images only when required, deploy the Helm chart, and seed example data.
+> When it completes it prints the ingress URL plus the bootstrap credentials
+> sourced from `deploy/values/dev.yaml`. Follow up with `make smoke-v03` to run
+> the comprehensive smoke test and `make verify-obs` if you want to confirm the
+> observability stack is scraping metrics—both remain optional but are handy
+> confidence checks before you start developing.
+
 ### Smoke test expectations
 
 `make smoke-v03` drives the v0.3 verification workflow: it reuses the v0.2 link, tag, and highlight assertions, then checks Prometheus metrics exposure, triggers an on-demand resurfacer Job, and confirms recommendations are returned by the API. The run passes when the original smoke expectations succeed, ServiceMonitors respond, and the resurfacer emits at least one recommendation, proving the API, worker, observability stack, and nightly jobs are operating together.
