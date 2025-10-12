@@ -161,8 +161,8 @@ describe("ListPage", () => {
         return createJsonResponse(
           {
             id: "highlight-1",
-            quote: "A brand new highlight",
-            annotation: "My thoughts",
+            text: "A brand new highlight",
+            note: "My thoughts",
             created_at: "2024-01-01T00:00:00.000Z",
             updated_at: "2024-01-01T00:00:00.000Z",
           },
@@ -190,7 +190,12 @@ describe("ListPage", () => {
         fetchMock.mock.calls.some(([request, options]) =>
           typeof request === "string" &&
           request.endsWith("/api/links/link-1/highlights") &&
-          options?.method === "POST"
+          options?.method === "POST" &&
+          options?.body ===
+            JSON.stringify({
+              text: "A brand new highlight",
+              note: "My thoughts",
+            })
         )
       ).toBe(true);
     });
