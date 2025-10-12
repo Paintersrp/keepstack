@@ -387,11 +387,15 @@ interface HighlightDrawerProps {
 
 function HighlightDrawer({ link, queryKey, onClose }: HighlightDrawerProps) {
   const queryClient = useQueryClient();
-  const [quote, setQuote] = useState("");
-  const [annotation, setAnnotation] = useState("");
+  const [text, setText] = useState("");
+  const [note, setNote] = useState("");
 
   const { mutateAsync: handleCreate, isPending: isCreating, error: createError } = useMutation({
-    mutationFn: () => createHighlight(link.id, { quote: quote.trim(), annotation: annotation.trim() || undefined }),
+    mutationFn: () =>
+      createHighlight(link.id, {
+        text: text.trim(),
+        note: note.trim() || undefined,
+      }),
     onSuccess: (newHighlight) => {
       queryClient.setQueryData<ListLinksResponse>(queryKey, (current) => {
         if (!current) return current;
@@ -404,8 +408,8 @@ function HighlightDrawer({ link, queryKey, onClose }: HighlightDrawerProps) {
           ),
         };
       });
-      setQuote("");
-      setAnnotation("");
+      setText("");
+      setNote("");
     },
   });
 
@@ -431,7 +435,7 @@ function HighlightDrawer({ link, queryKey, onClose }: HighlightDrawerProps) {
 
   const submitHighlight = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!quote.trim()) return;
+    if (!text.trim()) return;
     await handleCreate();
   };
 
@@ -455,8 +459,8 @@ function HighlightDrawer({ link, queryKey, onClose }: HighlightDrawerProps) {
             </label>
             <textarea
               id="highlight-quote"
-              value={quote}
-              onChange={(event) => setQuote(event.target.value)}
+              value={text}
+              onChange={(event) => setText(event.target.value)}
               required
               rows={3}
               className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-slate-400"
@@ -468,15 +472,15 @@ function HighlightDrawer({ link, queryKey, onClose }: HighlightDrawerProps) {
             </label>
             <textarea
               id="highlight-annotation"
-              value={annotation}
-              onChange={(event) => setAnnotation(event.target.value)}
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
               rows={3}
               className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-slate-400"
             />
           </div>
           {createError && <p className="text-sm text-red-400">{createError.message}</p>}
           <div className="flex justify-end">
-            <Button type="submit" disabled={isCreating || !quote.trim()}>
+            <Button type="submit" disabled={isCreating || !text.trim()}>
               {isCreating ? "Saving..." : "Add highlight"}
             </Button>
           </div>
@@ -509,8 +513,8 @@ interface HighlightCardProps {
 function HighlightCard({ highlight, onDelete, disabled }: HighlightCardProps) {
   return (
     <article className="space-y-3 rounded-lg border border-slate-800 bg-slate-900/70 p-4">
-      <p className="text-sm text-slate-100">“{highlight.quote}”</p>
-      {highlight.annotation && <p className="text-sm text-slate-300">{highlight.annotation}</p>}
+      <p className="text-sm text-slate-100">“{highlight.text}”</p>
+      {highlight.note && <p className="text-sm text-slate-300">{highlight.note}</p>}
       <div className="flex items-center justify-between text-xs text-slate-500">
         <span>Saved {new Date(highlight.created_at).toLocaleString()}</span>
         <button

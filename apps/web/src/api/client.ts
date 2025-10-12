@@ -11,8 +11,8 @@ export type ListTagsResponse = TagWithCount[];
 
 export interface HighlightSummary {
   id: string;
-  quote: string;
-  annotation?: string | null;
+  text: string;
+  note?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -147,8 +147,8 @@ export function deleteTag(tagId: number): Promise<void> {
 }
 
 export interface CreateHighlightInput {
-  quote: string;
-  annotation?: string;
+  text: string;
+  note?: string;
 }
 
 export function createHighlight(
@@ -157,7 +157,10 @@ export function createHighlight(
 ): Promise<HighlightSummary> {
   return request<HighlightSummary>(`/links/${linkId}/highlights`, {
     method: "POST",
-    body: JSON.stringify(input)
+    body: JSON.stringify({
+      text: input.text,
+      note: input.note,
+    })
   });
 }
 
