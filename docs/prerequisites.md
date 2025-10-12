@@ -32,6 +32,8 @@ echo "$CR_PAT" | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
 
 If you are using another registry, export the `REGISTRY` environment variable before running any Make targets, for example `export REGISTRY=registry.example.com/keepstack`.
 
+If you prefer to keep everything local, `make build-local` builds the images with `--load` and runs `k3d image import` so the dev cluster can pull them directly from your machine. In that flow, registry credentials are optional because nothing is pushed to GHCR.
+
 ### Allow the dev cluster to pull private images
 
 If your Keepstack images live in a private GHCR repository, create a pull secret in the `keepstack` namespace before running `make helm-dev`:

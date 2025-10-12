@@ -70,7 +70,11 @@ keepstack/
    - Review the [comprehensive tooling guide](docs/prerequisites.md) to install Docker with Buildx, k3d, kubectl, Helm, and GNU Make
    - Ensure you can authenticate to a container registry (defaults to GHCR)
 
-2. **Bootstrap a dev cluster and install ingress-nginx**
+2. **Build images for your workflow**
+   - Run `make build && make push` when you plan to publish the images to your registry (the chart pulls from `$(REGISTRY)`)
+   - Run `make build-local` when you just need the images inside the local k3d cluster. The target builds with `--load` and calls `k3d image import` so `make helm-dev` can deploy without reaching GHCR.
+
+3. **Bootstrap a dev cluster and install ingress-nginx**
 
    ```sh
    make dev-up

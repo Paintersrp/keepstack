@@ -9,9 +9,10 @@ CHART ?= deploy/charts/keepstack
 DEV_VALUES ?= deploy/values/dev.yaml
 VERIFY_JOB ?= keepstack-keepstack-verify-schema
 ROOT_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
+CLUSTER ?= keepstack
 
 .PHONY: help d dev-up dev-down build push helm-dev logs seed dash-grafana smoke smoke-v02 digest-once backup-now \
-        resurfacer-now verify-obs verify-alerts restore-drill rollout-observe smoke-v03 verify-schema test
+        resurfacer-now verify-obs verify-alerts restore-drill rollout-observe smoke-v03 verify-schema test build-local
 
 help:
 	@grep -E '^[a-zA-Z0-9_-]+:([^=]|$$)' $(MAKEFILE_LIST) | cut -d':' -f1 | sort | uniq
@@ -43,6 +44,22 @@ build:
 	docker buildx build --platform linux/amd64 \
 		--tag $(REGISTRY_SANITIZED)/keepstack-web:$(TAG) \
 		-f apps/web/Dockerfile .
+
+build-local:
+	docker buildx build --platform linux/amd64 --load \
+		--tag $(REGISTRY_SANITIZED)/keepstack-api:$(TAG) \
+		-f apps/api/Dockerfile .
+	docker buildx build --platform linux/amd64 --load \
+		--tag $(REGISTRY_SANITIZED)/keepstack-worker:$(TAG) \
+		-f apps/worker/Dockerfile .
+	docker buildx build --platform linux/amd64 --load \
+		--tag $(REGISTRY_SANITIZED)/keepstack-web:$(TAG) \
+		-f apps/web/Dockerfile .
+	k3d image import \
+		$(REGISTRY_SANITIZED)/keepstack-api:$(TAG) \
+		$(REGISTRY_SANITIZED)/keepstack-worker:$(TAG) \
+		$(REGISTRY_SANITIZED)/keepstack-web:$(TAG) \
+		--cluster $(CLUSTER)
 
 push:
 	docker push $(REGISTRY_SANITIZED)/keepstack-api:$(TAG)
