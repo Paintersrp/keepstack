@@ -60,10 +60,7 @@ backup:
   schedule: "0 3 * * *"
   retention: 7
   storage:
-    kind: pvc
-    pvc:
-      size: 5Gi
-      storageClassName: local-path
+    kind: emptyDir
 
 resurfacer:
   enabled: true
