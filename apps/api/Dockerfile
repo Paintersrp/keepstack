@@ -18,10 +18,15 @@ COPY . .
 
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    cd apps/api && go build -o /out/api ./cmd/api
+    cd apps/api && \
+    go build -o /out/api ./cmd/api && \
+    go build -o /out/migrate ./cmd/migrate && \
+    go build -o /out/cron ./cmd/cron
 
 FROM gcr.io/distroless/base-debian12:nonroot
 WORKDIR /app
 COPY --from=builder /out/api /app/api
+COPY --from=builder /out/migrate /app/migrate
+COPY --from=builder /out/cron /app/cron
 EXPOSE 8080
 ENTRYPOINT ["/app/api"]
