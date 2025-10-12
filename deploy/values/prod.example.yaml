@@ -1,8 +1,8 @@
 namespace: keepstack
 
 image:
-  registry: ghcr.io/YOUR_ORG
-  tag: "sha-<commit>"
+  registry: ghcr.io/Paintersrp
+  tag: "sha-edb3ad4"
   pullPolicy: IfNotPresent
   pullSecrets: []
 

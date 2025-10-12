@@ -1,8 +1,8 @@
 namespace: keepstack
 
 image:
-  registry: ghcr.io/YOUR_GH_USERNAME_OR_ORG
-  tag: "sha-CHANGE-ME"
+  registry: ghcr.io/Paintersrp
+  tag: "sha-edb3ad4"
   pullPolicy: IfNotPresent
   pullSecrets: []
 

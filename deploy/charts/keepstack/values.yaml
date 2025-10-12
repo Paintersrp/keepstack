@@ -4,8 +4,8 @@ networkPolicy:
   kubernetesApiCIDRs: []
 
 image:
-  registry: ghcr.io/example
-  tag: latest
+  registry: ghcr.io/Paintersrp
+  tag: sha-edb3ad4
   pullPolicy: IfNotPresent
   pullSecrets: []
   apiRepository: keepstack-api
