@@ -9,6 +9,9 @@ metadata:
     app.kubernetes.io/component: backup
 spec:
   accessModes: ["ReadWriteOnce"]
+{{- with .Values.backup.storage.pvc.storageClassName }}
+  storageClassName: {{ . | quote }}
+{{- end }}
   resources:
     requests:
       storage: {{ .Values.backup.storage.pvc.size | default "5Gi" }}

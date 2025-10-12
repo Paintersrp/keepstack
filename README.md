@@ -299,6 +299,11 @@ values out of Helm overrides.
 > observability stack is scraping metrics—both remain optional but are handy
 > confidence checks before you start developing.
 
+> ℹ️ The bootstrap path now pins the backup PersistentVolumeClaim to the
+> `local-path` StorageClass that ships with k3d/k3s. If your cluster uses a
+> different provisioner, override `backup.storage.pvc.storageClassName` in your
+> values file so the claim binds before Helm waits on the release.
+
 ### Smoke test expectations
 
 `make smoke-v03` drives the v0.3 verification workflow: it reuses the v0.2 link, tag, and highlight assertions, then checks Prometheus metrics exposure, triggers an on-demand resurfacer Job, and confirms recommendations are returned by the API. The run passes when the original smoke expectations succeed, ServiceMonitors respond, and the resurfacer emits at least one recommendation, proving the API, worker, observability stack, and nightly jobs are operating together.
