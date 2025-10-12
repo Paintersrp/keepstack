@@ -18,6 +18,13 @@ secrets:
     DIGEST_RECIPIENT: "reader@keepstack.local"
     DIGEST_LIMIT: "10"
 
+migrate:
+  backoffLimit: 5 # default: 5 retries before the job is marked failed
+  waitForDatabase:
+    enabled: true # default: true; disable to skip waiting for Postgres readiness
+    pollIntervalSeconds: 2 # default: 2; seconds between pg_isready checks
+    timeoutSeconds: 0 # default: 0; wait indefinitely (set >0 to fail after timeout)
+
 api:
   replicas: 2
   autoscaling:

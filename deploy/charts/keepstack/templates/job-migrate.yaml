@@ -2,6 +2,12 @@
 {{- $repository := default .Values.image.apiRepository .Values.migrate.image.repository -}}
 {{- $tag := default .Values.image.tag .Values.migrate.image.tag -}}
 {{- $pullPolicy := default .Values.image.pullPolicy .Values.migrate.image.pullPolicy -}}
+{{- $wait := default (dict) .Values.migrate.waitForDatabase -}}
+{{- $waitEnabled := default true $wait.enabled -}}
+{{- $waitImage := default "postgres:15.6-alpine" $wait.image -}}
+{{- $waitImagePullPolicy := default "IfNotPresent" $wait.imagePullPolicy -}}
+{{- $waitPoll := default 2 $wait.pollIntervalSeconds -}}
+{{- $waitTimeout := default 0 $wait.timeoutSeconds -}}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -19,7 +25,7 @@ metadata:
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
     "helm.sh/hook-weight": "0"
 spec:
-  backoffLimit: 1
+  backoffLimit: {{ default 5 .Values.migrate.backoffLimit }}
   template:
     metadata:
       labels:
@@ -32,6 +38,43 @@ spec:
 {{ toYaml . | nindent 8 }}
 {{- end }}
       restartPolicy: OnFailure
+{{- if $waitEnabled }}
+      initContainers:
+        - name: wait-for-database
+          image: {{ $waitImage }}
+          imagePullPolicy: {{ $waitImagePullPolicy }}
+{{- if .Values.secrets.data }}
+          env:
+{{- range $key, $value := .Values.secrets.data }}
+            - name: {{ $key }}
+              value: {{ tpl $value $ | quote }}
+{{- end }}
+{{- end }}
+{{- if gt (int $waitTimeout) 0 }}
+          command:
+            - sh
+            - -c
+            - |
+              end=$((SECONDS + {{ $waitTimeout }}))
+              until pg_isready -d "$DATABASE_URL"; do
+                if [ $SECONDS -ge $end ]; then
+                  echo "Timed out waiting for database after {{ $waitTimeout }} seconds"
+                  exit 1
+                fi
+                echo "Waiting for database..."
+                sleep {{ $waitPoll }}
+              done
+{{- else }}
+          command:
+            - sh
+            - -c
+            - |
+              until pg_isready -d "$DATABASE_URL"; do
+                echo "Waiting for database..."
+                sleep {{ $waitPoll }}
+              done
+{{- end }}
+{{- end }}
       containers:
         - name: migrate
           image: {{ printf "%s/%s:%s" $registry $repository $tag }}
