@@ -195,4 +195,79 @@ describe("ListPage", () => {
       ).toBe(true);
     });
   });
+
+  test("favorite toggle completes without network errors", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      const method = init?.method ?? "GET";
+      if (url.endsWith("/api/tags")) {
+        return createJsonResponse([]);
+      }
+      if (url.includes("/api/links") && method === "GET") {
+        return createJsonResponse({
+          items: [
+            {
+              id: "link-1",
+              url: "https://example.com/article",
+              title: "Example article",
+              source_domain: "example.com",
+              favorite: false,
+              created_at: "2024-01-01T00:00:00.000Z",
+              read_at: null,
+              archive_title: "Archived article",
+              byline: "Author",
+              lang: "en",
+              word_count: 1200,
+              extracted_text: "An example summary",
+              tags: [],
+              highlights: [],
+            },
+          ],
+          total_count: 1,
+          limit: 20,
+          offset: 0,
+        });
+      }
+      if (url.endsWith("/api/links/link-1") && method === "PATCH") {
+        return createJsonResponse({
+          id: "link-1",
+          url: "https://example.com/article",
+          title: "Example article",
+          source_domain: "example.com",
+          favorite: true,
+          created_at: "2024-01-01T00:00:00.000Z",
+          read_at: null,
+          archive_title: "Archived article",
+          byline: "Author",
+          lang: "en",
+          word_count: 1200,
+          extracted_text: "An example summary",
+          tags: [],
+          highlights: [],
+        });
+      }
+      throw new Error(`Unhandled request: ${url}`);
+    });
+    global.fetch = fetchMock as unknown as typeof global.fetch;
+
+    const { user } = renderListPage();
+    await flushAsyncUpdates();
+
+    const favoriteButton = await screen.findByRole("button", { name: /Mark favorite/i });
+    await user.click(favoriteButton);
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(([request, options]) =>
+          typeof request === "string" &&
+          request.endsWith("/api/links/link-1") &&
+          options?.method === "PATCH"
+        )
+      ).toBe(true);
+    });
+
+    await waitFor(() => {
+      expect(favoriteButton).toHaveTextContent(/Favorited/i);
+    });
+  });
 });

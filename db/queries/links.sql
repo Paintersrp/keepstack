@@ -154,6 +154,61 @@ UPDATE links
 SET title = sqlc.narg('title')
 WHERE id = sqlc.arg('id');
 
+-- name: UpdateLinkFavorite :one
+WITH updated AS (
+    UPDATE links AS l
+    SET favorite = sqlc.arg('favorite')
+    WHERE l.id = sqlc.arg('id')
+    RETURNING l.id,
+              l.user_id,
+              l.url,
+              l.title,
+              l.source_domain,
+              l.created_at,
+              l.read_at,
+              l.favorite
+)
+SELECT u.id,
+       u.user_id,
+       u.url,
+       u.title,
+       u.source_domain,
+       u.created_at,
+       u.read_at,
+       u.favorite,
+       COALESCE(a.title, '') AS archive_title,
+       COALESCE(a.byline, '') AS archive_byline,
+       COALESCE(a.lang, '') AS lang,
+       COALESCE(a.word_count, 0) AS word_count,
+       COALESCE(a.extracted_text, '') AS extracted_text,
+       COALESCE(tag_data.tag_ids, ARRAY[]::INTEGER[]) AS tag_ids,
+       COALESCE(tag_data.tag_names, ARRAY[]::TEXT[]) AS tag_names,
+       COALESCE(highlight_data.highlights, '[]'::JSON) AS highlights
+FROM updated u
+LEFT JOIN archives a ON a.link_id = u.id
+LEFT JOIN LATERAL (
+    SELECT ARRAY_AGG(t.id ORDER BY t.name) AS tag_ids,
+           ARRAY_AGG(t.name ORDER BY t.name) AS tag_names
+    FROM link_tags lt
+    JOIN tags t ON t.id = lt.tag_id
+    WHERE lt.link_id = u.id
+) AS tag_data ON TRUE
+LEFT JOIN LATERAL (
+    SELECT json_agg(
+               json_build_object(
+                   'id', h.id,
+                   'link_id', h.link_id,
+                   'text', h.quote,
+                   'note', h.annotation,
+                   'created_at', h.created_at,
+                   'updated_at', h.updated_at
+               )
+               ORDER BY h.created_at DESC
+           ) AS highlights
+    FROM highlights h
+    WHERE h.link_id = u.id
+) AS highlight_data ON TRUE;
+
 -- name: CreateTag :one
 INSERT INTO tags (name)
 VALUES (sqlc.arg('name'))
