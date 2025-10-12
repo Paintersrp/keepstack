@@ -41,7 +41,7 @@ type queryProvider interface {
 	ListRecommendationsForUser(context.Context, db.ListRecommendationsForUserParams) ([]db.ListRecommendationsForUserRow, error)
 	CreateClaim(context.Context, db.CreateClaimParams) (db.CreateClaimRow, error)
 	GetTagByName(context.Context, string) (db.Tag, error)
-	ListTags(context.Context) ([]db.Tag, error)
+	ListTagLinkCounts(context.Context) ([]db.ListTagLinkCountsRow, error)
 	CreateTag(context.Context, string) (db.Tag, error)
 	GetTag(context.Context, int32) (db.Tag, error)
 	UpdateTag(context.Context, db.UpdateTagParams) (db.Tag, error)
@@ -256,8 +256,9 @@ type linkResponse struct {
 }
 
 type tagResponse struct {
-	ID   int32  `json:"id"`
-	Name string `json:"name"`
+	ID        int32  `json:"id"`
+	Name      string `json:"name"`
+	LinkCount *int32 `json:"link_count,omitempty"`
 }
 
 type highlightResponse struct {
@@ -285,10 +286,6 @@ type listLinksResponse struct {
 	TotalCount int64          `json:"total_count"`
 	Limit      int            `json:"limit"`
 	Offset     int            `json:"offset"`
-}
-
-type tagsResponse struct {
-	Tags []tagResponse `json:"tags"`
 }
 
 type linkTagsResponse struct {
@@ -707,7 +704,7 @@ func (s *Server) buildRecommendationResponse(ctx context.Context, row db.ListRec
 
 func (s *Server) handleListTags(c echo.Context) error {
 	ctx := c.Request().Context()
-	items, err := s.queries.ListTags(ctx)
+	items, err := s.queries.ListTagLinkCounts(ctx)
 	if err != nil {
 		s.metrics.TagListFailure.Inc()
 		return c.JSON(stdhttp.StatusInternalServerError, map[string]string{"error": "failed to list tags"})
@@ -715,11 +712,12 @@ func (s *Server) handleListTags(c echo.Context) error {
 
 	responses := make([]tagResponse, 0, len(items))
 	for _, item := range items {
-		responses = append(responses, tagResponse{ID: item.ID, Name: item.Name})
+		count := item.LinkCount
+		responses = append(responses, tagResponse{ID: item.ID, Name: item.Name, LinkCount: &count})
 	}
 
 	s.metrics.TagListSuccess.Inc()
-	return c.JSON(stdhttp.StatusOK, tagsResponse{Tags: responses})
+	return c.JSON(stdhttp.StatusOK, responses)
 }
 
 func (s *Server) handleCreateTag(c echo.Context) error {
@@ -754,7 +752,8 @@ func (s *Server) handleCreateTag(c echo.Context) error {
 	}
 
 	s.metrics.TagCreateSuccess.Inc()
-	return c.JSON(stdhttp.StatusCreated, tagResponse{ID: tag.ID, Name: tag.Name})
+	count := int32(0)
+	return c.JSON(stdhttp.StatusCreated, tagResponse{ID: tag.ID, Name: tag.Name, LinkCount: &count})
 }
 
 func (s *Server) handleGetTag(c echo.Context) error {

@@ -535,8 +535,8 @@ func TestHandleListTags(t *testing.T) {
 	t.Parallel()
 
 	queries := &mockQueries{
-		listTagsFn: func(ctx context.Context) ([]db.Tag, error) {
-			return []db.Tag{{ID: 1, Name: "alpha"}}, nil
+		listTagLinkCountsFn: func(ctx context.Context) ([]db.ListTagLinkCountsRow, error) {
+			return []db.ListTagLinkCountsRow{{ID: 1, Name: "alpha", LinkCount: 3}}, nil
 		},
 	}
 
@@ -550,6 +550,21 @@ func TestHandleListTags(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+
+	var payload []tagResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if len(payload) != 1 {
+		t.Fatalf("expected 1 tag, got %d", len(payload))
+	}
+	tag := payload[0]
+	if tag.ID != 1 || tag.Name != "alpha" {
+		t.Fatalf("unexpected tag payload: %+v", tag)
+	}
+	if tag.LinkCount == nil || *tag.LinkCount != 3 {
+		t.Fatalf("expected link_count 3, got %+v", tag.LinkCount)
 	}
 }
 
@@ -999,7 +1014,7 @@ type mockQueries struct {
 	listRecommendationsForUserFn func(context.Context, db.ListRecommendationsForUserParams) ([]db.ListRecommendationsForUserRow, error)
 	createClaimFn                func(context.Context, db.CreateClaimParams) (db.CreateClaimRow, error)
 	getTagByNameFn               func(context.Context, string) (db.Tag, error)
-	listTagsFn                   func(context.Context) ([]db.Tag, error)
+	listTagLinkCountsFn          func(context.Context) ([]db.ListTagLinkCountsRow, error)
 	createTagFn                  func(context.Context, string) (db.Tag, error)
 	getTagFn                     func(context.Context, int32) (db.Tag, error)
 	updateTagFn                  func(context.Context, db.UpdateTagParams) (db.Tag, error)
@@ -1072,11 +1087,11 @@ func (m *mockQueries) GetTagByName(ctx context.Context, name string) (db.Tag, er
 	return m.getTagByNameFn(ctx, name)
 }
 
-func (m *mockQueries) ListTags(ctx context.Context) ([]db.Tag, error) {
-	if m.listTagsFn == nil {
-		return nil, fmt.Errorf("unexpected ListTags call")
+func (m *mockQueries) ListTagLinkCounts(ctx context.Context) ([]db.ListTagLinkCountsRow, error) {
+	if m.listTagLinkCountsFn == nil {
+		return nil, fmt.Errorf("unexpected ListTagLinkCounts call")
 	}
-	return m.listTagsFn(ctx)
+	return m.listTagLinkCountsFn(ctx)
 }
 
 func (m *mockQueries) CreateTag(ctx context.Context, name string) (db.Tag, error) {
