@@ -7,6 +7,8 @@ export interface TagWithCount extends TagSummary {
   link_count: number;
 }
 
+export type ListTagsResponse = TagWithCount[];
+
 export interface HighlightSummary {
   id: string;
   quote: string;
@@ -125,8 +127,8 @@ export function updateLink(linkId: string, input: UpdateLinkInput): Promise<Link
   });
 }
 
-export function listTags(): Promise<TagWithCount[]> {
-  return request<TagWithCount[]>("/tags", { method: "GET" });
+export function listTags(): Promise<ListTagsResponse> {
+  return request<ListTagsResponse>("/tags", { method: "GET" });
 }
 
 export interface CreateTagInput {

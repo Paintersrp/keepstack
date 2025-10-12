@@ -223,6 +223,15 @@ SELECT id, name
 FROM tags
 ORDER BY name;
 
+-- name: ListTagLinkCounts :many
+SELECT t.id,
+       t.name,
+       COUNT(lt.link_id)::INT AS link_count
+FROM tags t
+LEFT JOIN link_tags lt ON lt.tag_id = t.id
+GROUP BY t.id, t.name
+ORDER BY t.name;
+
 -- name: GetTag :one
 SELECT id, name
 FROM tags

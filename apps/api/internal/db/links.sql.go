@@ -467,6 +467,42 @@ func (q *Queries) ListTags(ctx context.Context) ([]Tag, error) {
 	return items, nil
 }
 
+const listTagLinkCounts = `-- name: ListTagLinkCounts :many
+SELECT t.id,
+       t.name,
+       COUNT(lt.link_id)::INT AS link_count
+FROM tags t
+LEFT JOIN link_tags lt ON lt.tag_id = t.id
+GROUP BY t.id, t.name
+ORDER BY t.name
+`
+
+type ListTagLinkCountsRow struct {
+	ID        int32
+	Name      string
+	LinkCount int32
+}
+
+func (q *Queries) ListTagLinkCounts(ctx context.Context) ([]ListTagLinkCountsRow, error) {
+	rows, err := q.db.Query(ctx, listTagLinkCounts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListTagLinkCountsRow
+	for rows.Next() {
+		var i ListTagLinkCountsRow
+		if err := rows.Scan(&i.ID, &i.Name, &i.LinkCount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTagsForLink = `-- name: ListTagsForLink :many
 SELECT t.id, t.name
 FROM tags t
