@@ -270,12 +270,12 @@ values out of Helm overrides.
    make logs
    ```
 
-   The Helm chart configures graceful shutdown delays for the API and worker
-   Deployments. Adjust `api.shutdownDelaySeconds`,
-   `api.terminationGracePeriodSeconds`, `worker.shutdownDelaySeconds`, and
-   `worker.terminationGracePeriodSeconds` in `deploy/charts/keepstack/values.yaml`
-   (or your override files) if your cluster needs more time to drain requests
-   before a rollout.
+   The Helm chart configures graceful shutdown windows for the API and worker
+   Deployments via `api.terminationGracePeriodSeconds` and
+   `worker.terminationGracePeriodSeconds` in
+   `deploy/charts/keepstack/values.yaml` (or your override files). Increase
+   these values if your cluster needs more time to drain requests before a
+   rollout.
 
 6. **Seed sample data and run a smoke test**
 

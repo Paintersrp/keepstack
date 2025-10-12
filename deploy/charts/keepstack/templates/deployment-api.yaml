@@ -27,12 +27,6 @@ spec:
         - name: api
           image: {{ printf "%s/%s:%s" .Values.image.registry .Values.image.apiRepository .Values.image.tag }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          lifecycle:
-            preStop:
-              exec:
-                command:
-                  - "sleep"
-                  - "{{ .Values.api.shutdownDelaySeconds }}"
           ports:
             - name: http
               containerPort: 8080

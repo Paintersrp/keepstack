@@ -27,12 +27,6 @@ spec:
         - name: worker
           image: {{ printf "%s/%s:%s" .Values.image.registry .Values.image.workerRepository .Values.image.tag }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          lifecycle:
-            preStop:
-              exec:
-                command:
-                  - "sleep"
-                  - "{{ .Values.worker.shutdownDelaySeconds }}"
           env:
             - name: PORT
               value: {{ .Values.worker.metricsPort | quote }}
