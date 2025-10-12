@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -34,7 +35,7 @@ func main() {
 	var dbReady atomic.Bool
 	var queueReady atomic.Bool
 
-	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
+	pool, err := connectDatabase(ctx, logger, cfg.DatabaseURL)
 	if err != nil {
 		logger.Fatalf("connect database: %v", err)
 	}
@@ -56,7 +57,7 @@ func main() {
 		_ = healthSrv.Shutdown(shutdownCtx)
 	}()
 
-	subscriber, err := queue.NewSubscriber(cfg.NATSURL)
+	subscriber, err := connectNATS(ctx, logger, cfg.NATSURL)
 	if err != nil {
 		logger.Fatalf("connect nats: %v", err)
 	}
@@ -97,6 +98,80 @@ func main() {
 	}
 
 	logger.Println("worker stopped")
+}
+
+func connectDatabase(ctx context.Context, logger *log.Logger, url string) (*pgxpool.Pool, error) {
+	backoff := time.Second
+	var lastErr error
+
+	for attempts := 1; ; attempts++ {
+		attemptCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		pool, err := pgxpool.New(attemptCtx, url)
+		cancel()
+		if err == nil {
+			logger.Printf("database connection established after %d attempt(s)", attempts)
+			return pool, nil
+		}
+
+		lastErr = err
+		if ctx.Err() != nil {
+			break
+		}
+
+		logger.Printf("database connection failed (attempt %d): %v", attempts, err)
+
+		select {
+		case <-time.After(backoff):
+		case <-ctx.Done():
+			return nil, fmt.Errorf("context cancelled while connecting to database: %w", ctx.Err())
+		}
+
+		if backoff < 8*time.Second {
+			backoff *= 2
+		}
+	}
+
+	if lastErr == nil {
+		lastErr = fmt.Errorf("context cancelled before database connection established")
+	}
+
+	return nil, fmt.Errorf("connect to database: %w", lastErr)
+}
+
+func connectNATS(ctx context.Context, logger *log.Logger, url string) (*queue.Subscriber, error) {
+	backoff := time.Second
+	var lastErr error
+
+	for attempts := 1; ; attempts++ {
+		subscriber, err := queue.NewSubscriber(url)
+		if err == nil {
+			logger.Printf("nats connection established after %d attempt(s)", attempts)
+			return subscriber, nil
+		}
+
+		lastErr = err
+		if ctx.Err() != nil {
+			break
+		}
+
+		logger.Printf("nats connection failed (attempt %d): %v", attempts, err)
+
+		select {
+		case <-time.After(backoff):
+		case <-ctx.Done():
+			return nil, fmt.Errorf("context cancelled while connecting to nats: %w", ctx.Err())
+		}
+
+		if backoff < 8*time.Second {
+			backoff *= 2
+		}
+	}
+
+	if lastErr == nil {
+		lastErr = fmt.Errorf("context cancelled before nats connection established")
+	}
+
+	return nil, fmt.Errorf("connect to nats: %w", lastErr)
 }
 
 func startMetricsServer(addr string, logger *log.Logger) *http.Server {
