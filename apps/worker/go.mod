@@ -1,8 +1,8 @@
 module github.com/example/keepstack/apps/worker
 
-go 1.23
+go 1.25
 
-toolchain go1.24.3
+toolchain go1.25
 
 require (
 	github.com/abadojack/whatlanggo v1.0.1
