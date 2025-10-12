@@ -21,6 +21,10 @@ spec:
         spec:
           restartPolicy: OnFailure
           serviceAccountName: {{ include "keepstack.serviceAccountName.api" . }}
+{{- with .Values.image.pullSecrets }}
+          imagePullSecrets:
+{{ toYaml . | nindent 12 }}
+{{- end }}
           containers:
             - name: resurfacer
               image: {{ printf "%s/%s:%s" .Values.image.registry .Values.image.apiRepository .Values.image.tag }}

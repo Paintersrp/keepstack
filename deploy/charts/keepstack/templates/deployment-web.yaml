@@ -17,6 +17,10 @@ spec:
         app.kubernetes.io/name: {{ include "keepstack.fullname" . }}-web
         app.kubernetes.io/component: web
     spec:
+{{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+{{ toYaml . | nindent 8 }}
+{{- end }}
       containers:
         - name: web
           image: {{ printf "%s/%s:%s" .Values.image.registry .Values.image.webRepository .Values.image.tag }}

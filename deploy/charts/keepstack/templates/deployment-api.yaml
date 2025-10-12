@@ -18,6 +18,10 @@ spec:
         app.kubernetes.io/component: api
     spec:
       serviceAccountName: {{ include "keepstack.serviceAccountName.api" . }}
+{{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+{{ toYaml . | nindent 8 }}
+{{- end }}
       terminationGracePeriodSeconds: {{ .Values.api.terminationGracePeriodSeconds }}
       containers:
         - name: api

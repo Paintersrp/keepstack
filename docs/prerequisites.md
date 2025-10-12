@@ -32,6 +32,27 @@ echo "$CR_PAT" | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
 
 If you are using another registry, export the `REGISTRY` environment variable before running any Make targets, for example `export REGISTRY=registry.example.com/keepstack`.
 
+### Allow the dev cluster to pull private images
+
+If your Keepstack images live in a private GHCR repository, create a pull secret in the `keepstack` namespace before running `make helm-dev`:
+
+```sh
+kubectl create namespace keepstack --dry-run=client -o yaml | kubectl apply -f -
+kubectl create secret docker-registry keepstack-ghcr \
+  --namespace keepstack \
+  --docker-server=ghcr.io \
+  --docker-username=YOUR_GITHUB_USERNAME \
+  --docker-password="$CR_PAT"
+```
+
+Then point the Helm chart at the secret by setting `image.pullSecrets` in `deploy/values/dev.yaml` (or another override file) before running `make helm-dev`:
+
+```yaml
+image:
+  pullSecrets:
+    - name: keepstack-ghcr
+```
+
 ## Verify your setup
 
 1. Confirm Docker is running and Buildx works: `docker buildx ls`.

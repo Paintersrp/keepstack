@@ -19,6 +19,10 @@ spec:
         app.kubernetes.io/component: verify-schema
     spec:
       serviceAccountName: {{ include "keepstack.serviceAccountName.migrator" . }}
+{{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+{{ toYaml . | nindent 8 }}
+{{- end }}
       restartPolicy: Never
       containers:
         - name: verify-schema
