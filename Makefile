@@ -1,6 +1,7 @@
 SHELL := /bin/bash
 
 REGISTRY ?= ghcr.io/Paintersrp
+REGISTRY_SANITIZED := $(shell echo $(REGISTRY) | tr '[:upper:]' '[:lower:]')
 TAG ?= sha-$(shell git rev-parse --short HEAD)
 RELEASE ?= keepstack
 NAMESPACE ?= keepstack
@@ -34,19 +35,19 @@ dev-down:
 
 build:
 	docker buildx build --platform linux/amd64 \
-		--tag $(REGISTRY)/keepstack-api:$(TAG) \
+		--tag $(REGISTRY_SANITIZED)/keepstack-api:$(TAG) \
 		-f apps/api/Dockerfile .
 	docker buildx build --platform linux/amd64 \
-		--tag $(REGISTRY)/keepstack-worker:$(TAG) \
+		--tag $(REGISTRY_SANITIZED)/keepstack-worker:$(TAG) \
 		-f apps/worker/Dockerfile .
 	docker buildx build --platform linux/amd64 \
-		--tag $(REGISTRY)/keepstack-web:$(TAG) \
+		--tag $(REGISTRY_SANITIZED)/keepstack-web:$(TAG) \
 		-f apps/web/Dockerfile .
 
 push:
-	docker push $(REGISTRY)/keepstack-api:$(TAG)
-	docker push $(REGISTRY)/keepstack-worker:$(TAG)
-	docker push $(REGISTRY)/keepstack-web:$(TAG)
+	docker push $(REGISTRY_SANITIZED)/keepstack-api:$(TAG)
+	docker push $(REGISTRY_SANITIZED)/keepstack-worker:$(TAG)
+	docker push $(REGISTRY_SANITIZED)/keepstack-web:$(TAG)
 
 helm-dev:
 	set -euo pipefail; \
@@ -56,7 +57,7 @@ helm-dev:
 	release_prefix="$${release}-keepstack"; \
 	migrate_job="$${release_prefix}-migrate"; \
 	verify_job="$${release_prefix}-verify-schema"; \
-	if ! helm upgrade --install "$${release}" "$${chart}" -n "$${namespace}" --create-namespace -f $(DEV_VALUES) --set image.registry=$(REGISTRY) --set image.tag=$(TAG) --wait --timeout 10m --debug; then \
+	if ! helm upgrade --install "$${release}" "$${chart}" -n "$${namespace}" --create-namespace -f $(DEV_VALUES) --set image.registry=$(REGISTRY_SANITIZED) --set image.tag=$(TAG) --wait --timeout 10m --debug; then \
 		status=$$?; \
 		echo "Helm upgrade failed. Collecting diagnostics..."; \
 		kubectl -n "$${namespace}" get pods || true; \
@@ -114,7 +115,7 @@ smoke-v03:
 verify-schema:
 	kubectl -n $(NAMESPACE) delete job $(VERIFY_JOB) --ignore-not-found
 	set -euo pipefail; \
-	helm template keepstack $(CHART) -n $(NAMESPACE) --set image.registry=$(REGISTRY) --set image.tag=$(TAG) --show-only templates/job-verify-schema.yaml | kubectl -n $(NAMESPACE) apply -f -
+	helm template keepstack $(CHART) -n $(NAMESPACE) --set image.registry=$(REGISTRY_SANITIZED) --set image.tag=$(TAG) --show-only templates/job-verify-schema.yaml | kubectl -n $(NAMESPACE) apply -f -
 	kubectl -n $(NAMESPACE) wait --for=condition=Complete job/$(VERIFY_JOB) --timeout=120s || (kubectl -n $(NAMESPACE) logs job/$(VERIFY_JOB) && exit 1)
 	kubectl -n $(NAMESPACE) logs job/$(VERIFY_JOB)
 
