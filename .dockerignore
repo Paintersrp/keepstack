@@ -1,0 +1,9 @@
+.git
+node_modules
+apps/web/node_modules
+dist
+.vite
+coverage
+*.log
+*.out
+*.test
