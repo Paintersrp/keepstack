@@ -43,6 +43,11 @@ spec:
         - name: wait-for-database
           image: {{ $waitImage }}
           imagePullPolicy: {{ $waitImagePullPolicy }}
+{{- if .Values.secrets.name }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.secrets.name }}
+{{- end }}
 {{- if .Values.secrets.data }}
           env:
 {{- range $key, $value := .Values.secrets.data }}
@@ -79,6 +84,11 @@ spec:
         - name: migrate
           image: {{ printf "%s/%s:%s" $registry $repository $tag }}
           imagePullPolicy: {{ $pullPolicy }}
+{{- if .Values.secrets.name }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.secrets.name }}
+{{- end }}
 {{- if .Values.secrets.data }}
           env:
 {{- range $key, $value := .Values.secrets.data }}
