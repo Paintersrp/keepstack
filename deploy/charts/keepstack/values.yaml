@@ -16,8 +16,8 @@ secrets:
   create: true
   name: keepstack-secrets
   data:
-    DATABASE_URL: "postgres://keepstack:keepstack@postgres:5432/keepstack?sslmode=disable"
-    NATS_URL: "nats://nats:4222"
+    DATABASE_URL: "postgres://keepstack:keepstack@{{ include \"keepstack.fullname\" . }}-postgres:5432/keepstack?sslmode=disable"
+    NATS_URL: "nats://{{ include \"keepstack.fullname\" . }}-nats:4222"
     JWT_SECRET: "change-me"
 
 serviceAccounts:

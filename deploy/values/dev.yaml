@@ -10,8 +10,8 @@ secrets:
   create: true
   name: keepstack-secrets
   data:
-    DATABASE_URL: "postgres://keepstack:keepstack@keepstack-postgres:5432/keepstack?sslmode=disable"
-    NATS_URL: "nats://keepstack-nats:4222"
+    DATABASE_URL: "postgres://keepstack:keepstack@{{ include \"keepstack.fullname\" . }}-postgres:5432/keepstack?sslmode=disable"
+    NATS_URL: "nats://{{ include \"keepstack.fullname\" . }}-nats:4222"
     JWT_SECRET: "devdevdevdevdevdevdevdevdevdevdevdev"
     SMTP_URL: "smtp://keepstack:changeme@smtp.keepstack.local:587"
     DIGEST_SENDER: "Keepstack Digest <digest@keepstack.local>"
