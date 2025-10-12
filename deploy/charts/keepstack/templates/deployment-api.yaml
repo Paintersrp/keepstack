@@ -68,7 +68,7 @@ spec:
             successThreshold: {{ .Values.api.probes.readiness.successThreshold }}
           startupProbe:
             httpGet:
-              path: /healthz
+              path: /livez
               port: http
             initialDelaySeconds: {{ .Values.api.probes.startup.initialDelaySeconds }}
             periodSeconds: {{ .Values.api.probes.startup.periodSeconds }}
