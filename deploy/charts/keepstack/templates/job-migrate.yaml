@@ -32,9 +32,13 @@ spec:
         - name: migrate
           image: {{ printf "%s/%s:%s" $registry $repository $tag }}
           imagePullPolicy: {{ $pullPolicy }}
-          envFrom:
-            - secretRef:
-                name: {{ .Values.secrets.name }}
+{{- if .Values.secrets.data }}
+          env:
+{{- range $key, $value := .Values.secrets.data }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+{{- end }}
+{{- end }}
 {{- with .Values.migrate.command }}
           command:
 {{ toYaml . | indent 12 }}
