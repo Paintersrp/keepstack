@@ -11,7 +11,11 @@ metadata:
     {{- include "keepstack.labels" . | nindent 4 }}
     app.kubernetes.io/component: migrate
   annotations:
-    "helm.sh/hook": pre-install,pre-upgrade
+    {{- if .Release.IsInstall }}
+    "helm.sh/hook": post-install
+    {{- else }}
+    "helm.sh/hook": pre-upgrade
+    {{- end }}
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
     "helm.sh/hook-weight": "0"
 spec:

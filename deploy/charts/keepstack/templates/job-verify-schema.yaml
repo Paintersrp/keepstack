@@ -10,6 +10,10 @@ metadata:
   labels:
     {{- include "keepstack.labels" . | nindent 4 }}
     app.kubernetes.io/component: verify-schema
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    "helm.sh/hook-weight": "10"
 spec:
   backoffLimit: {{ default 0 .Values.verifySchema.backoffLimit }}
   template:
