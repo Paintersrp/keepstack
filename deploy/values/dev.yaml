@@ -63,6 +63,7 @@ backup:
     kind: pvc
     pvc:
       size: 5Gi
+      storageClassName: local-path
 
 resurfacer:
   enabled: true

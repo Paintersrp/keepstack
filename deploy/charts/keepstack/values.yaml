@@ -83,6 +83,7 @@ backup:
     pvc:
       size: 5Gi
       existingClaim: ""
+      storageClassName: ""
     s3:
       bucket: ""
       endpoint: ""
