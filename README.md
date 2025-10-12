@@ -299,10 +299,11 @@ values out of Helm overrides.
 > observability stack is scraping metrics—both remain optional but are handy
 > confidence checks before you start developing.
 
-> ℹ️ The bootstrap path now pins the backup PersistentVolumeClaim to the
-> `local-path` StorageClass that ships with k3d/k3s. If your cluster uses a
-> different provisioner, override `backup.storage.pvc.storageClassName` in your
-> values file so the claim binds before Helm waits on the release.
+> ℹ️ The bootstrap path now defaults backups to an ephemeral `emptyDir` volume
+> so the Helm release no longer blocks when a PersistentVolumeClaim fails to
+> bind (a common hiccup on fresh k3d clusters). If you want durable backup
+> storage, override `backup.storage.kind` (and related PVC settings) in your
+> values file.
 
 ### Smoke test expectations
 
