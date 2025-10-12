@@ -74,17 +74,45 @@ helm-dev:
 	release_prefix="$${release}-keepstack"; \
 	migrate_job="$${release_prefix}-migrate"; \
 	verify_job="$${release_prefix}-verify-schema"; \
-	if ! helm upgrade --install "$${release}" "$${chart}" -n "$${namespace}" --create-namespace -f $(DEV_VALUES) --set image.registry=$(REGISTRY_SANITIZED) --set image.tag=$(TAG) --wait --timeout 10m --debug; then \
-		status=$$?; \
-		echo "Helm upgrade failed. Collecting diagnostics..."; \
-		kubectl -n "$${namespace}" get pods || true; \
-		kubectl -n "$${namespace}" get jobs || true; \
-		for job in "$${migrate_job}" "$${verify_job}"; do \
-			kubectl -n "$${namespace}" describe job "$${job}" || true; \
-			kubectl -n "$${namespace}" logs job/"$${job}" || true; \
-		done; \
-		kubectl -n "$${namespace}" get events --sort-by=.metadata.creationTimestamp | tail -n 20 || true; \
-		exit "$${status}"; \
+	collect_diagnostics() { \
+	        echo "Collecting diagnostics..."; \
+	        kubectl -n "$${namespace}" get pods || true; \
+	        kubectl -n "$${namespace}" get jobs || true; \
+	        for job in "$${migrate_job}" "$${verify_job}"; do \
+	                kubectl -n "$${namespace}" describe job "$${job}" || true; \
+	                kubectl -n "$${namespace}" logs job/"$${job}" || true; \
+	        done; \
+	        kubectl -n "$${namespace}" get events --sort-by=.metadata.creationTimestamp | tail -n 20 || true; \
+	}; \
+	wait_flag="--wait"; \
+	release_exists="true"; \
+	if ! helm status "$${release}" -n "$${namespace}" >/dev/null 2>&1; then \
+	        release_exists="false"; \
+	        wait_flag=""; \
+	fi; \
+	if ! helm upgrade --install "$${release}" "$${chart}" -n "$${namespace}" --create-namespace -f $(DEV_VALUES) --set image.registry=$(REGISTRY_SANITIZED) --set image.tag=$(TAG) $${wait_flag} --timeout 10m --debug; then \
+	        status=$$?; \
+	        echo "Helm upgrade failed."; \
+	        collect_diagnostics; \
+	        exit "$${status}"; \
+	fi; \
+	if [[ "$${release_exists}" == "false" ]]; then \
+	        echo "Helm release installed without --wait; waiting for core workloads to become ready..."; \
+	        wait_targets=( \
+	                "statefulset/$${release_prefix}-postgres" \
+	                "statefulset/$${release_prefix}-nats" \
+	                "deployment/$${release_prefix}-api" \
+	                "deployment/$${release_prefix}-worker" \
+	                "deployment/$${release_prefix}-web" \
+	        ); \
+	        for target in "$${wait_targets[@]}"; do \
+	                echo "Waiting for $$target..."; \
+	                if ! kubectl -n "$${namespace}" rollout status "$${target}" --timeout=10m; then \
+	                        echo "Rollout for $$target failed."; \
+	                        collect_diagnostics; \
+	                        exit 1; \
+	                fi; \
+	        done; \
 	fi
 
 logs:
