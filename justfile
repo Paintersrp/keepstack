@@ -50,16 +50,16 @@ helm-dev:
 	migrate_job="${release_prefix}-migrate"
 	verify_job="${release_prefix}-verify-schema"
 	if ! helm upgrade --install "${release}" "${chart}" -n "${namespace}" --create-namespace -f {{DEV_VALUES}} --set image.registry={{REGISTRY}} --set image.tag={{TAG}} --wait --timeout 10m --debug; then
-		status=$?
-		echo "Helm upgrade failed. Collecting diagnostics..."
-		kubectl -n "${namespace}" get pods || true
-		kubectl -n "${namespace}" get jobs || true
-		for job in "${migrate_job}" "${verify_job}"; do
-			kubectl -n "${namespace}" describe job "${job}" || true
-			kubectl -n "${namespace}" logs job/"${job}" || true
-		done
-		kubectl -n "${namespace}" get events --sort-by=.metadata.creationTimestamp | tail -n 20 || true
-		exit "${status}"
+	    status=$?
+	    echo "Helm upgrade failed. Collecting diagnostics..."
+	    kubectl -n "${namespace}" get pods || true
+	    kubectl -n "${namespace}" get jobs || true
+	    for job in "${migrate_job}" "${verify_job}"; do
+	        kubectl -n "${namespace}" describe job "${job}" || true
+	        kubectl -n "${namespace}" logs job/"${job}" || true
+	    done
+	    kubectl -n "${namespace}" get events --sort-by=.metadata.creationTimestamp | tail -n 20 || true
+	    exit "${status}"
 	fi
 
 logs:
