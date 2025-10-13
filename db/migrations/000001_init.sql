@@ -40,6 +40,7 @@ CREATE TABLE link_tags (
     PRIMARY KEY (link_id, tag_id)
 );
 
+-- +goose StatementBegin
 CREATE OR REPLACE FUNCTION links_search_tsv_update() RETURNS TRIGGER AS $$
 DECLARE
     body TEXT;
@@ -49,7 +50,9 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+-- +goose StatementEnd
 
+-- +goose StatementBegin
 CREATE OR REPLACE FUNCTION archives_refresh_link_search() RETURNS TRIGGER AS $$
 BEGIN
     UPDATE links
@@ -58,6 +61,7 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+-- +goose StatementEnd
 
 CREATE TRIGGER links_search_tsv_update_trigger
 BEFORE INSERT OR UPDATE ON links

@@ -24,6 +24,7 @@ DROP TRIGGER IF EXISTS links_search_tsv_update_trigger ON links;
 DROP FUNCTION IF EXISTS archives_refresh_link_search();
 DROP FUNCTION IF EXISTS links_search_tsv_update();
 
+-- +goose StatementBegin
 CREATE OR REPLACE FUNCTION links_search_tsv_update() RETURNS TRIGGER AS $$
 DECLARE
     archive_title TEXT;
@@ -46,7 +47,9 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+-- +goose StatementEnd
 
+-- +goose StatementBegin
 CREATE OR REPLACE FUNCTION archives_refresh_link_search() RETURNS TRIGGER AS $$
 DECLARE
     link_title TEXT;
@@ -66,6 +69,7 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+-- +goose StatementEnd
 
 CREATE TRIGGER links_search_tsv_update_trigger
 BEFORE INSERT OR UPDATE ON links
@@ -90,6 +94,7 @@ ALTER TABLE archives DROP COLUMN IF EXISTS byline;
 ALTER TABLE archives DROP COLUMN IF EXISTS lang;
 ALTER TABLE archives DROP COLUMN IF EXISTS word_count;
 
+-- +goose StatementBegin
 CREATE OR REPLACE FUNCTION links_search_tsv_update() RETURNS TRIGGER AS $$
 DECLARE
     body TEXT;
@@ -99,7 +104,9 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+-- +goose StatementEnd
 
+-- +goose StatementBegin
 CREATE OR REPLACE FUNCTION archives_refresh_link_search() RETURNS TRIGGER AS $$
 BEGIN
     UPDATE links
@@ -108,6 +115,7 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+-- +goose StatementEnd
 
 CREATE TRIGGER links_search_tsv_update_trigger
 BEFORE INSERT OR UPDATE ON links
