@@ -39,6 +39,8 @@ spec:
                 - |
                   PGPASSWORD="$POSTGRES_PASSWORD" \
                     pg_isready \
+                      -h 127.0.0.1 \
+                      -p 5432 \
                       -U "$POSTGRES_USER" \
                       -d "$POSTGRES_DB"
             initialDelaySeconds: 10
