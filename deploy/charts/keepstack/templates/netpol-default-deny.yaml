@@ -154,6 +154,48 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
+  name: {{ printf "%s-allow-migrator-egress" $fullName }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "keepstack.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: migrate
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ printf "%s-postgres" $fullName }}
+      ports:
+        - port: postgres
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ printf "%s-allow-verify-schema-egress" $fullName }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "keepstack.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: verify-schema
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ printf "%s-postgres" $fullName }}
+      ports:
+        - port: postgres
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
   name: {{ printf "%s-allow-dns" $fullName }}
   namespace: {{ $namespace }}
   labels:
