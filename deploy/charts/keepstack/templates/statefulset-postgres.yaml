@@ -33,7 +33,16 @@ spec:
               mountPath: /var/lib/postgresql/data
           readinessProbe:
             exec:
-              command: ["pg_isready", "-U", {{ .Values.postgres.username | quote }}]
+              command:
+                - sh
+                - -c
+                - |
+                  PGPASSWORD="$POSTGRES_PASSWORD" \
+                    pg_isready \
+                      -h 127.0.0.1 \
+                      -p 5432 \
+                      -U "$POSTGRES_USER" \
+                      -d "$POSTGRES_DB"
             initialDelaySeconds: 10
             periodSeconds: 15
   volumeClaimTemplates:
