@@ -88,6 +88,21 @@ keepstack/
    `kubectl -n keepstack delete secret keepstack-secrets` before running
    `make helm-dev` so Helm can recreate it with the proper ownership metadata.
 
+   Both the migration and schema verification jobs include optional
+   `pg_isready` init containers that wait for Postgres connections before the
+   main containers start. Tune the behavior via Helm values:
+
+   * `migrate.waitForDatabase` and `verifySchema.waitForDatabase` control
+     whether the wait container runs, how frequently it polls, and when to time
+     out.
+   * `verifySchema.backoffLimit` sets how many times Kubernetes retries the
+     verification Job when the check fails (defaults to `0`).
+
+   Disable the wait containers with
+   `--set migrate.waitForDatabase.enabled=false --set verifySchema.waitForDatabase.enabled=false`
+   if you are pointing `DATABASE_URL` at an always-on, externally managed
+   database.
+
    The `deploy/values/dev.yaml` file enables a scheduled digest CronJob. Adjust
    `digest.schedule`, `digest.limit`, `digest.sender`, and `digest.recipient`
    to control when emails are sent, how many unread links they include, and
