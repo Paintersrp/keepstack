@@ -25,6 +25,13 @@ migrate:
     pollIntervalSeconds: 2 # default: 2; seconds between pg_isready checks
     timeoutSeconds: 0 # default: 0; wait indefinitely (set >0 to fail after timeout)
 
+verifySchema:
+  backoffLimit: 0 # default: 0 retries; increase to allow automatic re-runs on failure
+  waitForDatabase:
+    enabled: true # default: true; disable when DATABASE_URL points to an always-on service
+    pollIntervalSeconds: 2 # default: 2; seconds between readiness probes
+    timeoutSeconds: 0 # default: 0; wait indefinitely for Postgres
+
 api:
   replicas: 2
   autoscaling:

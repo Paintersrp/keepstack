@@ -14,6 +14,13 @@ secrets:
     NATS_URL: "nats://{{ include \"keepstack.fullname\" . }}-nats:4222"
     JWT_SECRET: "replace-with-production-secret"
 
+verifySchema:
+  backoffLimit: 1 # allow a single retry if the verification job fails
+  waitForDatabase:
+    enabled: true
+    pollIntervalSeconds: 2
+    timeoutSeconds: 60
+
 api:
   replicas: 3
 

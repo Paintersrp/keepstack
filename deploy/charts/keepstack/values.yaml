@@ -63,6 +63,13 @@ verifySchema:
     - /app/cron
   args:
     - verify-schema
+  backoffLimit: 0
+  waitForDatabase:
+    enabled: true
+    image: postgres:15.6-alpine
+    imagePullPolicy: IfNotPresent
+    pollIntervalSeconds: 2
+    timeoutSeconds: 0
   resources:
     requests:
       cpu: 50m
@@ -70,7 +77,6 @@ verifySchema:
     limits:
       cpu: 200m
       memory: 128Mi
-  backoffLimit: 0
 
 digest:
   enabled: false
