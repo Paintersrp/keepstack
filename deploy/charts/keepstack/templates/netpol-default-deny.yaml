@@ -81,6 +81,18 @@ spec:
               app.kubernetes.io/name: {{ printf "%s-worker" $fullName }}
       ports:
         - port: postgres
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: migrate
+      ports:
+        - port: postgres
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: verify-schema
+      ports:
+        - port: postgres
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
