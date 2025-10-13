@@ -78,12 +78,20 @@ helm-dev:
 	        echo "Collecting diagnostics..."; \
 	        kubectl -n "$${namespace}" get pods || true; \
 	        kubectl -n "$${namespace}" get jobs || true; \
-	        for job in "$${migrate_job}" "$${verify_job}"; do \
-	                kubectl -n "$${namespace}" describe job "$${job}" || true; \
-	                kubectl -n "$${namespace}" logs job/"$${job}" || true; \
-	        done; \
-	        kubectl -n "$${namespace}" get events --sort-by=.metadata.creationTimestamp | tail -n 20 || true; \
-	}; \
+                for job in "$${migrate_job}" "$${verify_job}"; do \
+                        kubectl -n "$${namespace}" describe job "$${job}" || true; \
+                        kubectl -n "$${namespace}" logs job/"$${job}" || true; \
+                        pods="$$(kubectl -n "$${namespace}" get pods -l job-name="$${job}" -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' || true)"; \
+                        for pod in $$pods; do \
+                                containers="$$(kubectl -n "$${namespace}" get pod "$$pod" -o jsonpath='{range .spec.initContainers[*]}{.name}{"\n"}{end}{range .spec.containers[*]}{.name}{"\n"}{end}' || true)"; \
+                                for container in $$containers; do \
+                                        echo "--- Logs for job $$job pod $$pod container $$container ---"; \
+                                        kubectl -n "$${namespace}" logs "$$pod" -c "$$container" || true; \
+                                done; \
+                        done; \
+                done; \
+                kubectl -n "$${namespace}" get events --sort-by=.metadata.creationTimestamp | tail -n 20 || true; \
+        }; \
 	wait_flag="--wait"; \
 	release_exists="true"; \
 	if ! helm status "$${release}" -n "$${namespace}" >/dev/null 2>&1; then \
