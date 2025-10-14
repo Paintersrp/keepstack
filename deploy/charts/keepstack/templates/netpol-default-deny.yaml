@@ -118,6 +118,27 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
+  name: {{ printf "%s-allow-api-egress-to-nats" $fullName }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "keepstack.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ printf "%s-api" $fullName }}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ printf "%s-nats" $fullName }}
+      ports:
+        - port: client
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
   name: {{ printf "%s-allow-worker-egress" $fullName }}
   namespace: {{ $namespace }}
   labels:
