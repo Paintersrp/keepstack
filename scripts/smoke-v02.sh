@@ -27,7 +27,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-BASE_URL="${SMOKE_BASE_URL:-http://keepstack.localtest.me:8080}"
+BASE_URL="${SMOKE_BASE_URL:-http://keepstack.localtest.me:18080}"
 POST_PATH="${SMOKE_POST_PATH:-/api/links}"
 GET_PATH="${SMOKE_GET_PATH:-/api/links}"
 TAG_PATH="${SMOKE_TAG_PATH:-/api/tags}"

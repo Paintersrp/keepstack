@@ -127,7 +127,7 @@ logs:
 	kubectl -n $(NAMESPACE) logs deploy/keepstack-api -f
 
 seed:
-	curl -fsS -X POST "http://keepstack.localtest.me:8080/api/links" \
+	curl -fsS -X POST "http://keepstack.localtest.me:18080/api/links" \
 		-H 'Content-Type: application/json' \
 		-d '{"url":"https://example.com","title":"Example Domain"}'
 
@@ -205,7 +205,7 @@ bootstrap-dev:
 	grafana = config.get('observability', {}).get('grafana', {})
 
 	if host:
-	    print(f"Ingress URL: http://{host}:8080")
+	    print(f"Ingress URL: http://{host}:18080")
 
 	if postgres.get('username') and postgres.get('password'):
 	    print(f"Postgres credentials: {postgres['username']}/{postgres['password']}")

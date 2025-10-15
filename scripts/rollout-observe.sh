@@ -32,7 +32,7 @@ require_command jq
 
 NAMESPACE="${KS_NAMESPACE:-keepstack}"
 RELEASE="${KS_RELEASE:-keepstack}"
-BASE_URL="${SMOKE_BASE_URL:-http://keepstack.localtest.me:8080}"
+BASE_URL="${SMOKE_BASE_URL:-http://keepstack.localtest.me:18080}"
 POLL_INTERVAL="${KS_ROLLOUT_CURL_INTERVAL:-5}"
 CURL_TIMEOUT="${KS_ROLLOUT_CURL_TIMEOUT:-5}"
 ROLLBACK_ON_FAIL="${KS_ROLLOUT_ROLLBACK:-false}"
