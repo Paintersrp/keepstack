@@ -304,6 +304,15 @@ values out of Helm overrides.
    make smoke-v03
    ```
 
+   The seed helper targets `http://keepstack.localtest.me:18080` by default, but it
+   now falls back to a temporary `kubectl port-forward` if that hostname is
+   unreachable. When your workstation cannot resolve the ingress domain (or you
+   want to hit another endpoint entirely), export `SEED_URL` with the full
+   `POST /api/links` URL before running `make seed`. The fallback port-forward
+   reuses the namespace from `SEED_NAMESPACE` (default: `keepstack`) when
+   discovering the API service, so override it if you installed the chart in a
+   different namespace.
+
 7. **Open the app**
 
    ```sh
@@ -459,6 +468,7 @@ With the stack running, install Keepstack using `deploy/values/dev.yaml` (observ
 ### Smoke test script usage & troubleshooting
 
 - **Basic usage**: Run `make smoke-v03` once the Helm release is ready. Override defaults such as `SMOKE_BASE_URL`, `SMOKE_POST_TIMEOUT`, or `SMOKE_POLL_TIMEOUT` to target alternative ingress URLs or tune slow environments. For a narrower pass that only exercises the legacy flow, call `./scripts/smoke-v02.sh` directly.
+- **Seed connectivity issues**: `make seed` wraps `scripts/dev_seed.sh`. If the script reports repeated `000` statuses or cURL `7/28/52` errors, point it at a reachable API endpoint with `SEED_URL` or direct the port-forward fallback by overriding `SEED_NAMESPACE` and, if needed, `SEED_RELEASE`.
 - **Digest dry-run**: Export `DIGEST_TEST=1` to trigger the optional digest preview step. When set, `make smoke-v03` inherits the `log://` SMTP fallback from `smoke-v02` so the API logs the rendered email instead of attempting SMTP delivery.
 - **Ingress routing failures**: If the script reports connection or DNS errors, confirm the ingress controller is ready with `kubectl -n ingress-nginx get pods` and that `/etc/hosts` (or your DNS) resolves `keepstack.localtest.me`.
 - **Pending database migrations**: A `201` POST followed by repeated polling without the link appearing usually indicates the worker cannot finish migrations. Check the Postgres pod logs (`kubectl -n keepstack logs statefulset/keepstack-postgres`) and re-run `helm-dev` after resolving schema issues.
