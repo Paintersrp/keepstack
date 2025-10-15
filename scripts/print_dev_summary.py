@@ -81,7 +81,7 @@ def main() -> None:
             grafana = grafana_value
 
     if host:
-        print(f"Ingress URL: http://{host}:8080")
+        print(f"Ingress URL: http://{host}:18080")
 
     if isinstance(postgres, dict):
         username = postgres.get("username")
