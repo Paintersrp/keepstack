@@ -127,7 +127,7 @@ logs:
 	kubectl -n $(NAMESPACE) logs deploy/keepstack-api -f
 
 seed:
-	curl -fsS -X POST "http://keepstack.localtest.me:8080/api/links" \
+	curl -fsS -X POST "http://keepstack.localtest.me:18080/api/links" \
 		-H 'Content-Type: application/json' \
 		-d '{"url":"https://example.com","title":"Example Domain"}'
 
