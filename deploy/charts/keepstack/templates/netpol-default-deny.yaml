@@ -64,6 +64,17 @@ spec:
               app.kubernetes.io/name: {{ printf "%s-api" $fullName }}
       ports:
         - port: http
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/component: controller
+              app.kubernetes.io/name: ingress-nginx
+      ports:
+        - port: http
+        - port: https
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -149,6 +160,17 @@ spec:
               app.kubernetes.io/name: {{ printf "%s-postgres" $fullName }}
       ports:
         - port: postgres
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/component: controller
+              app.kubernetes.io/name: ingress-nginx
+      ports:
+        - port: http
+        - port: https
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
