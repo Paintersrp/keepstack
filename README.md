@@ -88,6 +88,11 @@ keepstack/
    `kubectl -n keepstack delete secret keepstack-secrets` before running
    `make helm-dev` so Helm can recreate it with the proper ownership metadata.
 
+   When you need verbose Helm output for troubleshooting, prefix the command
+   with `HELM_DEBUG=1` (for example, `HELM_DEBUG=1 make helm-dev`). The
+   variable re-enables the `--debug` flag on the underlying
+   `helm upgrade --install` invocation without making every run noisy.
+
    Both the migration and schema verification jobs include optional
    `pg_isready` init containers that wait for Postgres connections before the
    main containers start. Tune the behavior via Helm values:

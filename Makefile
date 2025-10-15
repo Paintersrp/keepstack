@@ -98,7 +98,11 @@ helm-dev:
 	        release_exists="false"; \
 	        wait_flag=""; \
 	fi; \
-	if ! helm upgrade --install "$${release}" "$${chart}" -n "$${namespace}" --create-namespace -f $(DEV_VALUES) --set image.registry=$(REGISTRY_SANITIZED) --set image.tag=$(TAG) $${wait_flag} --timeout 10m --debug; then \
+        helm_debug_flag=""; \
+        if [[ -n "${HELM_DEBUG:-}" ]]; then \
+                helm_debug_flag="--debug"; \
+        fi; \
+        if ! helm upgrade --install "$${release}" "$${chart}" -n "$${namespace}" --create-namespace -f $(DEV_VALUES) --set image.registry=$(REGISTRY_SANITIZED) --set image.tag=$(TAG) $${wait_flag} --timeout 10m $${helm_debug_flag}; then \
 	        status=$$?; \
 	        echo "Helm upgrade failed."; \
 	        collect_diagnostics; \
