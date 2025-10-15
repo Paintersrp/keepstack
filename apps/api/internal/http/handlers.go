@@ -317,12 +317,14 @@ func (s *Server) handleCreateLink(c echo.Context) error {
 	var req createLinkRequest
 	if err := c.Bind(&req); err != nil {
 		s.metrics.LinkCreateFailure.Inc()
+		c.Logger().Warnf("create link: bind payload failed: %v", err)
 		return c.JSON(stdhttp.StatusBadRequest, map[string]string{"error": "invalid payload"})
 	}
 
 	normalizedURL, err := normalizeURL(strings.TrimSpace(req.URL))
 	if err != nil {
 		s.metrics.LinkCreateFailure.Inc()
+		c.Logger().Warnf("create link: invalid url %q: %v", req.URL, err)
 		return c.JSON(stdhttp.StatusBadRequest, map[string]string{"error": "invalid url"})
 	}
 
@@ -351,15 +353,18 @@ func (s *Server) handleCreateLink(c echo.Context) error {
 	ctx := c.Request().Context()
 	if _, err := s.queries.CreateLink(ctx, params); err != nil {
 		s.metrics.LinkCreateFailure.Inc()
+		c.Logger().Errorf("create link: store link failed: %v", err)
 		return c.JSON(stdhttp.StatusInternalServerError, map[string]string{"error": "failed to store link"})
 	}
 
 	if err := s.publisher.PublishLinkSaved(ctx, linkID); err != nil {
 		s.metrics.LinkCreateFailure.Inc()
+		c.Logger().Errorf("create link: publish link saved failed: %v", err)
 		return c.JSON(stdhttp.StatusInternalServerError, map[string]string{"error": "failed to enqueue link"})
 	}
 
 	s.metrics.LinkCreateSuccess.Inc()
+	c.Logger().Infof("create link: created link %s for %s", linkID, normalizedURL)
 	return c.JSON(stdhttp.StatusCreated, map[string]string{
 		"id":  linkID.String(),
 		"url": normalizedURL,
