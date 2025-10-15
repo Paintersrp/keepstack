@@ -302,7 +302,7 @@ values out of Helm overrides.
 7. **Open the app**
 
    ```sh
-   echo "Open: http://keepstack.localtest.me:8080"
+   echo "Open: http://keepstack.localtest.me:18080"
    ```
 
 > 💡 Prefer to let Make orchestrate the workflow? Run `make bootstrap-dev` to

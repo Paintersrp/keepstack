@@ -31,7 +31,7 @@ require_command curl
 require_command jq
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-BASE_URL="${SMOKE_BASE_URL:-http://keepstack.localtest.me:8080}"
+BASE_URL="${SMOKE_BASE_URL:-http://keepstack.localtest.me:18080}"
 NAMESPACE="${KS_NAMESPACE:-keepstack}"
 RELEASE="${KS_RELEASE:-keepstack}"
 RESURF_LIMIT="${KS_RESURF_LIMIT:-5}"
