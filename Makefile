@@ -160,69 +160,8 @@ bootstrap-dev:
 			echo "✅ $$step completed"; \
 		done; \
 		echo ""; \
-		echo "==> Dev environment bootstrap complete"; \
-	python3 - <<-'PY' || true
-	from pathlib import Path
-
-	def parse_yaml(lines):
-	    root = {}
-	    stack = [(-1, root)]
-	    for raw_line in lines:
-	        if not raw_line.strip() or raw_line.lstrip().startswith('#'):
-	            continue
-	        indent = len(raw_line) - len(raw_line.lstrip(' '))
-	        line = raw_line.strip()
-	        key, _, value = line.partition(':')
-	        value = value.strip()
-	        while stack and indent <= stack[-1][0]:
-	            stack.pop()
-	        parent = stack[-1][1]
-	        if value == '':
-	            node = {}
-	            parent[key] = node
-	            stack.append((indent, node))
-	            continue
-	        if value in ('[]', '{}'):
-	            parsed = [] if value == '[]' else {}
-	        else:
-	            if (value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'")):
-	                value = value[1:-1]
-	            parsed = value
-	        parent[key] = parsed
-	    return root
-
-	config_path = Path('deploy/values/dev.yaml')
-	try:
-	    config = parse_yaml(config_path.read_text().splitlines())
-	except FileNotFoundError:
-	    raise SystemExit
-
-	ingress = config.get('ingress', {})
-	host = ingress.get('host')
-
-	secrets = config.get('secrets', {}).get('data', {})
-	postgres = config.get('postgres', {})
-	grafana = config.get('observability', {}).get('grafana', {})
-
-	if host:
-	    print(f"Ingress URL: http://{host}:8080")
-
-	if postgres.get('username') and postgres.get('password'):
-	    print(f"Postgres credentials: {postgres['username']}/{postgres['password']}")
-
-	smtp_url = secrets.get('SMTP_URL')
-	if smtp_url:
-	    print(f"SMTP URL: {smtp_url}")
-
-	jwt_secret = secrets.get('JWT_SECRET')
-	if jwt_secret:
-	    print(f"JWT secret: {jwt_secret}")
-
-	grafana_user = grafana.get('adminUser')
-	grafana_pass = grafana.get('adminPassword')
-	if grafana_user and grafana_pass:
-	    print(f"Grafana credentials: {grafana_user}/{grafana_pass}")
-	PY
+			echo "==> Dev environment bootstrap complete"; \
+			python3 scripts/print_dev_summary.py || true
 			echo ""
 
 dash-grafana:
