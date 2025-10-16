@@ -142,6 +142,30 @@ func TestHandleListLinksEmpty(t *testing.T) {
 	}
 }
 
+func TestHandleListLinksQueryErrorDoesNotPanic(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{DevUserID: uuid.MustParse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee")}
+	queries := &mockQueries{
+		listLinksFn: func(ctx context.Context, params db.ListLinksParams) ([]db.ListLinksRow, error) {
+			return nil, errors.New("boom")
+		},
+	}
+
+	srv := &Server{cfg: cfg, queries: queries, metrics: newTestMetrics()}
+	e := echo.New()
+	srv.RegisterRoutes(e)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/links?limit=10&offset=5&q=test", nil)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status %d, got %d", http.StatusInternalServerError, rec.Code)
+	}
+}
+
 func TestRegisterRoutesHealthEndpoints(t *testing.T) {
 	t.Parallel()
 
