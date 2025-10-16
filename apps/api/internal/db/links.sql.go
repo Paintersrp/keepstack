@@ -315,8 +315,8 @@ SELECT l.id,
        COALESCE(a.lang, '') AS lang,
        COALESCE(a.word_count, 0) AS word_count,
        COALESCE(a.extracted_text, '') AS extracted_text,
-       COALESCE(tag_data.tag_ids, ARRAY[]::INTEGER[]) AS tag_ids,
-       COALESCE(tag_data.tag_names, ARRAY[]::TEXT[]) AS tag_names,
+       COALESCE(tag_data.tag_ids, '{}'::INTEGER[]) AS tag_ids,
+       COALESCE(tag_data.tag_names, '{}'::TEXT[]) AS tag_names,
        COALESCE(highlight_data.highlights, '[]'::JSON) AS highlights
 FROM links l
 LEFT JOIN archives a ON a.link_id = l.id
@@ -441,32 +441,6 @@ func (q *Queries) ListLinks(ctx context.Context, arg ListLinksParams) ([]ListLin
 	return items, nil
 }
 
-const listTags = `-- name: ListTags :many
-SELECT id, name
-FROM tags
-ORDER BY name
-`
-
-func (q *Queries) ListTags(ctx context.Context) ([]Tag, error) {
-	rows, err := q.db.Query(ctx, listTags)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []Tag
-	for rows.Next() {
-		var i Tag
-		if err := rows.Scan(&i.ID, &i.Name); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listTagLinkCounts = `-- name: ListTagLinkCounts :many
 SELECT t.id,
        t.name,
@@ -493,6 +467,32 @@ func (q *Queries) ListTagLinkCounts(ctx context.Context) ([]ListTagLinkCountsRow
 	for rows.Next() {
 		var i ListTagLinkCountsRow
 		if err := rows.Scan(&i.ID, &i.Name, &i.LinkCount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTags = `-- name: ListTags :many
+SELECT id, name
+FROM tags
+ORDER BY name
+`
+
+func (q *Queries) ListTags(ctx context.Context) ([]Tag, error) {
+	rows, err := q.db.Query(ctx, listTags)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Tag
+	for rows.Next() {
+		var i Tag
+		if err := rows.Scan(&i.ID, &i.Name); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -603,8 +603,8 @@ SELECT u.id,
        COALESCE(a.lang, '') AS lang,
        COALESCE(a.word_count, 0) AS word_count,
        COALESCE(a.extracted_text, '') AS extracted_text,
-       COALESCE(tag_data.tag_ids, ARRAY[]::INTEGER[]) AS tag_ids,
-       COALESCE(tag_data.tag_names, ARRAY[]::TEXT[]) AS tag_names,
+       COALESCE(tag_data.tag_ids, '{}'::INTEGER[]) AS tag_ids,
+       COALESCE(tag_data.tag_names, '{}'::TEXT[]) AS tag_names,
        COALESCE(highlight_data.highlights, '[]'::JSON) AS highlights
 FROM updated u
 LEFT JOIN archives a ON a.link_id = u.id

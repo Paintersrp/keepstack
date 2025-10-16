@@ -39,8 +39,8 @@ SELECT l.id,
        COALESCE(a.lang, '') AS lang,
        COALESCE(a.word_count, 0) AS word_count,
        COALESCE(a.extracted_text, '') AS extracted_text,
-       COALESCE(tag_data.tag_ids, ARRAY[]::INTEGER[]) AS tag_ids,
-       COALESCE(tag_data.tag_names, ARRAY[]::TEXT[]) AS tag_names,
+       COALESCE(tag_data.tag_ids, '{}'::INTEGER[]) AS tag_ids,
+       COALESCE(tag_data.tag_names, '{}'::TEXT[]) AS tag_names,
        COALESCE(highlight_data.highlights, '[]'::JSON) AS highlights
 FROM links l
 LEFT JOIN archives a ON a.link_id = l.id
@@ -181,8 +181,8 @@ SELECT u.id,
        COALESCE(a.lang, '') AS lang,
        COALESCE(a.word_count, 0) AS word_count,
        COALESCE(a.extracted_text, '') AS extracted_text,
-       COALESCE(tag_data.tag_ids, ARRAY[]::INTEGER[]) AS tag_ids,
-       COALESCE(tag_data.tag_names, ARRAY[]::TEXT[]) AS tag_names,
+       COALESCE(tag_data.tag_ids, '{}'::INTEGER[]) AS tag_ids,
+       COALESCE(tag_data.tag_names, '{}'::TEXT[]) AS tag_names,
        COALESCE(highlight_data.highlights, '[]'::JSON) AS highlights
 FROM updated u
 LEFT JOIN archives a ON a.link_id = u.id
