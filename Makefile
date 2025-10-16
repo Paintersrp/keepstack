@@ -150,7 +150,7 @@ bootstrap-dev:
 		if [[ "$$need_push" == "true" ]]; then \
 			steps+=("push"); \
 		fi; \
-		steps+=("helm-dev" "seed"); \
+               steps+=("helm-dev" "verify-schema" "seed"); \
 		for step in "$${steps[@]}"; do \
 			echo ""; \
 			echo "==> Running $$step"; \
