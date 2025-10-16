@@ -81,6 +81,8 @@ keepstack/
    kubectl create ns keepstack || true
 ```
 
+   > **Note** If you already had a Keepstack k3d cluster from a previous version, run `make dev-down && make dev-up` to recreate it so the updated ingress port mappings take effect.
+
    The Helm chart manages the `keepstack-secrets` Secret when
    `secrets.create=true` (the default in `deploy/values/dev.yaml`). Update that
    file to change the bootstrap credentials instead of creating the Secret by
