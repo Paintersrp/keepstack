@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	stdhttp "net/http"
 	"net/url"
@@ -1469,11 +1470,28 @@ func extractStringSlice(value interface{}) []string {
 }
 
 type highlightPayload struct {
-	ID        string    `json:"id"`
-	Text      string    `json:"text"`
-	Note      *string   `json:"note"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID        string  `json:"id"`
+	Text      string  `json:"text"`
+	Note      *string `json:"note"`
+	CreatedAt string  `json:"created_at"`
+	UpdatedAt string  `json:"updated_at"`
+}
+
+var postgresTimestampLayouts = []string{
+	"2006-01-02 15:04:05.999999-07",
+	"2006-01-02 15:04:05-07",
+}
+
+func parsePostgresTimestamp(value string) (time.Time, error) {
+	var lastErr error
+	for _, layout := range postgresTimestampLayouts {
+		t, err := time.Parse(layout, value)
+		if err == nil {
+			return t, nil
+		}
+		lastErr = err
+	}
+	return time.Time{}, fmt.Errorf("parse PostgreSQL timestamp %q: %w", value, lastErr)
 }
 
 func decodeHighlights(data []byte) ([]highlightResponse, error) {
@@ -1489,12 +1507,23 @@ func decodeHighlights(data []byte) ([]highlightResponse, error) {
 	}
 	highlights := make([]highlightResponse, 0, len(raw))
 	for _, item := range raw {
+		createdAt, err := parsePostgresTimestamp(item.CreatedAt)
+		if err != nil {
+			log.Printf("decodeHighlights: failed to parse created_at: payload=%+v", item)
+			return nil, fmt.Errorf("failed to parse highlight created_at: %w", err)
+		}
+		updatedAt, err := parsePostgresTimestamp(item.UpdatedAt)
+		if err != nil {
+			log.Printf("decodeHighlights: failed to parse updated_at: payload=%+v", item)
+			return nil, fmt.Errorf("failed to parse highlight updated_at: %w", err)
+		}
+
 		highlights = append(highlights, highlightResponse{
 			ID:        item.ID,
 			Text:      item.Text,
 			Note:      item.Note,
-			CreatedAt: item.CreatedAt,
-			UpdatedAt: item.UpdatedAt,
+			CreatedAt: createdAt,
+			UpdatedAt: updatedAt,
 		})
 	}
 	return highlights, nil
