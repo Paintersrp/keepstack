@@ -503,9 +503,12 @@ func (s *Server) handleCreateClaim(c echo.Context) error {
 
 func (s *Server) handleListLinks(c echo.Context) error {
 	ctx := c.Request().Context()
-	limit, offset, err := parsePagination(c.QueryParam("limit"), c.QueryParam("offset"))
+	rawLimit := c.QueryParam("limit")
+	rawOffset := c.QueryParam("offset")
+	limit, offset, err := parsePagination(rawLimit, rawOffset)
 	if err != nil {
 		s.metrics.LinkListFailure.Inc()
+		c.Logger().Errorf("list links: failed to parse pagination (limit=%q offset=%q): %v", rawLimit, rawOffset, err)
 		return c.JSON(stdhttp.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
@@ -515,6 +518,7 @@ func (s *Server) handleListLinks(c echo.Context) error {
 		parsed, err := strconv.ParseBool(favoriteParam)
 		if err != nil {
 			s.metrics.LinkListFailure.Inc()
+			c.Logger().Errorf("list links: invalid favorite filter %q: %v", favoriteParam, err)
 			return c.JSON(stdhttp.StatusBadRequest, map[string]string{"error": "favorite must be boolean"})
 		}
 		favorite = pgtype.Bool{Bool: parsed, Valid: true}
@@ -544,9 +548,11 @@ func (s *Server) handleListLinks(c echo.Context) error {
 			if err != nil {
 				if errors.Is(err, pgx.ErrNoRows) {
 					s.metrics.LinkListFailure.Inc()
+					c.Logger().Errorf("list links: unknown tag %q in filter (limit=%d offset=%d favorite=%s query=%q)", name, limit, offset, favoriteParam, queryText)
 					return c.JSON(stdhttp.StatusBadRequest, map[string]string{"error": fmt.Sprintf("unknown tag: %s", name)})
 				}
 				s.metrics.LinkListFailure.Inc()
+				c.Logger().Errorf("list links: failed to resolve tag %q (limit=%d offset=%d favorite=%s query=%q tags=%q): %v", name, limit, offset, favoriteParam, queryText, tagsParam, err)
 				return c.JSON(stdhttp.StatusInternalServerError, map[string]string{"error": "failed to resolve tags"})
 			}
 			tagIDs = append(tagIDs, tag.ID)
@@ -570,6 +576,14 @@ func (s *Server) handleListLinks(c echo.Context) error {
 	items, err := s.queries.ListLinks(ctx, listParams)
 	if err != nil {
 		s.metrics.LinkListFailure.Inc()
+		favoriteLogValue := "unset"
+		if favorite.Valid {
+			favoriteLogValue = strconv.FormatBool(favorite.Bool)
+		}
+		c.Logger().Errorf(
+			"list links: queries.ListLinks failed (limit=%d offset=%d favorite=%s query=%q tags=%q tagIDs=%v): %v",
+			limit, offset, favoriteLogValue, queryText, tagsParam, tagIDs, err,
+		)
 		return c.JSON(stdhttp.StatusInternalServerError, map[string]string{"error": "failed to fetch links"})
 	}
 
@@ -585,6 +599,14 @@ func (s *Server) handleListLinks(c echo.Context) error {
 	count, err := s.queries.CountLinks(ctx, countParams)
 	if err != nil {
 		s.metrics.LinkListFailure.Inc()
+		favoriteLogValue := "unset"
+		if favorite.Valid {
+			favoriteLogValue = strconv.FormatBool(favorite.Bool)
+		}
+		c.Logger().Errorf(
+			"list links: queries.CountLinks failed (limit=%d offset=%d favorite=%s query=%q tags=%q tagIDs=%v): %v",
+			limit, offset, favoriteLogValue, queryText, tagsParam, tagIDs, err,
+		)
 		return c.JSON(stdhttp.StatusInternalServerError, map[string]string{"error": "failed to count links"})
 	}
 
@@ -593,6 +615,10 @@ func (s *Server) handleListLinks(c echo.Context) error {
 		resp, err := toLinkResponse(item)
 		if err != nil {
 			s.metrics.LinkListFailure.Inc()
+			c.Logger().Errorf(
+				"list links: toLinkResponse failed for link %s (limit=%d offset=%d favorite=%v query=%q tags=%q tagIDs=%v): %v",
+				uuidFromPg(item.ID), limit, offset, item.Favorite, queryText, tagsParam, tagIDs, err,
+			)
 			return c.JSON(stdhttp.StatusInternalServerError, map[string]string{"error": "failed to format response"})
 		}
 		responses = append(responses, resp)
