@@ -308,12 +308,22 @@ values out of Helm overrides.
 
    The seed helper targets `http://keepstack.localtest.me:18080` by default, but it
    now falls back to a temporary `kubectl port-forward` if that hostname is
-   unreachable. When your workstation cannot resolve the ingress domain (or you
-   want to hit another endpoint entirely), export `SEED_URL` with the full
-   `POST /api/links` URL before running `make seed`. The fallback port-forward
-   reuses the namespace from `SEED_NAMESPACE` (default: `keepstack`) when
-   discovering the API service, so override it if you installed the chart in a
-   different namespace.
+   unreachable. The bundled ingress listener binds an IPv4-only address, so
+   pointing `keepstack.localtest.me` at `::1` (or any unreachable IP) will cause
+   the bootstrap helpers to fail. When your workstation cannot resolve the
+   ingress domain (or you want to hit another endpoint entirely), export
+   `SEED_URL` with the full `POST /api/links` URL before running `make seed`.
+   The fallback port-forward reuses the namespace from `SEED_NAMESPACE`
+   (default: `keepstack`) when discovering the API service, so override it if
+   you installed the chart in a different namespace.
+
+   Before re-running `make bootstrap-dev`, validate your resolver and IPv4
+   routing with a quick check:
+
+   ```sh
+   getent hosts keepstack.localtest.me
+   curl -4 http://keepstack.localtest.me:18080/api/healthz
+   ```
 
 7. **Open the app**
 
@@ -472,7 +482,7 @@ With the stack running, install Keepstack using `deploy/values/dev.yaml` (observ
 - **Basic usage**: Run `make smoke-v03` once the Helm release is ready. Override defaults such as `SMOKE_BASE_URL`, `SMOKE_POST_TIMEOUT`, or `SMOKE_POLL_TIMEOUT` to target alternative ingress URLs or tune slow environments. For a narrower pass that only exercises the legacy flow, call `./scripts/smoke-v02.sh` directly.
 - **Seed connectivity issues**: `make seed` wraps `scripts/dev_seed.sh`. If the script reports repeated `000` statuses or cURL `7/28/52` errors, point it at a reachable API endpoint with `SEED_URL` or direct the port-forward fallback by overriding `SEED_NAMESPACE` and, if needed, `SEED_RELEASE`.
 - **Digest dry-run**: Export `DIGEST_TEST=1` to trigger the optional digest preview step. When set, `make smoke-v03` inherits the `log://` SMTP fallback from `smoke-v02` so the API logs the rendered email instead of attempting SMTP delivery.
-- **Ingress routing failures**: If the script reports connection or DNS errors, confirm the ingress controller is ready with `kubectl -n ingress-nginx get pods` and that `/etc/hosts` (or your DNS) resolves `keepstack.localtest.me`.
+- **Ingress routing failures**: If the script reports connection or DNS errors, confirm the ingress controller is ready with `kubectl -n ingress-nginx get pods` and that `/etc/hosts` (or your DNS) resolves `keepstack.localtest.me` to an IPv4 address. The bundled ingress listener does not bind IPv6, so mapping the hostname to `::1` (or leaving it unreachable) prevents `make bootstrap-dev` and the smoke tests from contacting the API. When IPv4 resolution is unavailable, point the helpers at an alternative endpoint via `SEED_URL` and `SMOKE_BASE_URL`.
 - **Pending database migrations**: A `201` POST followed by repeated polling without the link appearing usually indicates the worker cannot finish migrations. Check the Postgres pod logs (`kubectl -n keepstack logs statefulset/keepstack-postgres`) and re-run `helm-dev` after resolving schema issues.
 - **API readiness**: HTTP `5xx` responses or cURL timeouts imply the API deployment is still starting. Readiness now verifies the
   archives metadata columns and highlights table exist; failures surface hints about pending migrations alongside Prometheus metrics.
