@@ -56,9 +56,16 @@ type queryProvider interface {
 	DeleteHighlight(context.Context, pgtype.UUID) error
 }
 
+type healthPool interface {
+	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+	QueryRow(context.Context, string, ...any) pgx.Row
+	Ping(context.Context) error
+}
+
 type Server struct {
 	cfg       config.Config
-	pool      *pgxpool.Pool
+	pool      healthPool
 	queries   queryProvider
 	publisher queue.Publisher
 	metrics   *observability.Metrics
@@ -95,6 +102,8 @@ func (s *Server) RegisterRoutes(e *echo.Echo) {
 	e.GET("/metrics", echo.WrapHandler(promhttp.Handler()))
 
 	api := e.Group("/api")
+	api.GET("/healthz", s.handleHealthz)
+	api.GET("/livez", s.handleLivez)
 	api.POST("/links", s.handleCreateLink)
 	api.GET("/links", s.handleListLinks)
 	api.PATCH("/links/:id", s.handleUpdateLink)
@@ -183,7 +192,7 @@ func (s *Server) handleHealthz(c echo.Context) error {
 	return c.JSON(stdhttp.StatusOK, map[string]string{"status": "ok"})
 }
 
-func runReadinessQuery(ctx context.Context, pool *pgxpool.Pool, query string, args ...any) error {
+func runReadinessQuery(ctx context.Context, pool healthPool, query string, args ...any) error {
 	rows, err := pool.Query(ctx, query, args...)
 	if err != nil {
 		return err

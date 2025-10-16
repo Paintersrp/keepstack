@@ -495,7 +495,7 @@ With the stack running, install Keepstack using `deploy/values/dev.yaml` (observ
 
 - ✅ Goose migration covering users, links, archives, tags, and search triggers
 - ✅ sqlc-generated data access layer for the API
-- ✅ API exposes `/healthz`, `/livez`, `/metrics`, `POST /api/links`, `GET /api/links`
+- ✅ API exposes `/healthz`, `/api/healthz`, `/livez`, `/api/livez`, `/metrics`, `POST /api/links`, `GET /api/links`
 - ✅ Worker consumes `keepstack.links.saved`, fetches content, parses, persists archive data, and updates FTS
 - ✅ React web UI supports listing, searching, and adding links
 - ✅ Helm chart deploys API, worker, web, Postgres, NATS, and Chrome (placeholder) with ingress routing

@@ -97,6 +97,40 @@ func TestHandleCreateLinkInvalidURL(t *testing.T) {
 	}
 }
 
+func TestRegisterRoutesHealthEndpoints(t *testing.T) {
+	t.Parallel()
+
+	srv := &Server{metrics: newTestMetrics(), pool: stubHealthPool{}}
+	e := echo.New()
+	srv.RegisterRoutes(e)
+
+	tests := []struct {
+		name string
+		path string
+	}{
+		{name: "root readiness", path: "/healthz"},
+		{name: "api readiness", path: "/api/healthz"},
+		{name: "root liveness", path: "/livez"},
+		{name: "api liveness", path: "/api/livez"},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+			rec := httptest.NewRecorder()
+
+			e.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+			}
+		})
+	}
+}
+
 func TestHandleUpdateLinkFavorite(t *testing.T) {
 	t.Parallel()
 
@@ -1287,3 +1321,53 @@ func TestClassifyReadinessError(t *testing.T) {
 		})
 	}
 }
+
+type stubHealthPool struct{}
+
+func (stubHealthPool) Exec(context.Context, string, ...any) (pgconn.CommandTag, error) {
+	return pgconn.CommandTag("SELECT 1"), nil
+}
+
+func (stubHealthPool) Query(context.Context, string, ...any) (pgx.Rows, error) {
+	return &stubRows{}, nil
+}
+
+func (stubHealthPool) QueryRow(context.Context, string, ...any) pgx.Row {
+	return stubRow{}
+}
+
+func (stubHealthPool) Ping(context.Context) error {
+	return nil
+}
+
+type stubRow struct{}
+
+func (stubRow) Scan(dest ...any) error {
+	if len(dest) > 0 {
+		switch d := dest[0].(type) {
+		case *int:
+			*d = 0
+		}
+	}
+	return nil
+}
+
+type stubRows struct{}
+
+func (*stubRows) Close() {}
+
+func (*stubRows) Err() error { return nil }
+
+func (*stubRows) CommandTag() pgconn.CommandTag { return pgconn.CommandTag{} }
+
+func (*stubRows) FieldDescriptions() []pgconn.FieldDescription { return nil }
+
+func (*stubRows) Next() bool { return false }
+
+func (*stubRows) Scan(...any) error { return nil }
+
+func (*stubRows) Values() ([]any, error) { return nil, nil }
+
+func (*stubRows) RawValues() [][]byte { return nil }
+
+func (*stubRows) Conn() *pgx.Conn { return nil }
