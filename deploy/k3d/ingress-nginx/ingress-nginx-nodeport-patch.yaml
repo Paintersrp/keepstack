@@ -7,10 +7,14 @@ spec:
   type: NodePort
   ports:
     - name: http
+      appProtocol: http
       port: 80
+      protocol: TCP
       targetPort: http
       nodePort: 30080
     - name: https
+      appProtocol: https
       port: 443
+      protocol: TCP
       targetPort: https
       nodePort: 30443
