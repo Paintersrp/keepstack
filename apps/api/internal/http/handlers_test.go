@@ -263,6 +263,60 @@ func TestHandleUpdateLinkFavorite(t *testing.T) {
 	}
 }
 
+func TestDecodeHighlightsPostgresTimestamps(t *testing.T) {
+	t.Parallel()
+
+	payload := []byte(`[
+                {
+                        "id": "abc123",
+                        "text": "first",
+                        "note": null,
+                        "created_at": "2024-04-10 12:34:56.123456+00",
+                        "updated_at": "2024-04-11 13:14:15.654321+00"
+                },
+                {
+                        "id": "def456",
+                        "text": "second",
+                        "note": "remember",
+                        "created_at": "2024-04-12 08:00:00+00",
+                        "updated_at": "2024-04-12 09:00:00+00"
+                }
+        ]`)
+
+	highlights, err := decodeHighlights(payload)
+	if err != nil {
+		t.Fatalf("decodeHighlights returned error: %v", err)
+	}
+
+	if len(highlights) != 2 {
+		t.Fatalf("expected 2 highlights, got %d", len(highlights))
+	}
+
+	firstCreated := time.Date(2024, time.April, 10, 12, 34, 56, 123456000, time.UTC)
+	firstUpdated := time.Date(2024, time.April, 11, 13, 14, 15, 654321000, time.UTC)
+	if !highlights[0].CreatedAt.Equal(firstCreated) {
+		t.Fatalf("unexpected created_at: %v", highlights[0].CreatedAt)
+	}
+	if !highlights[0].UpdatedAt.Equal(firstUpdated) {
+		t.Fatalf("unexpected updated_at: %v", highlights[0].UpdatedAt)
+	}
+	if highlights[0].Note != nil {
+		t.Fatalf("expected nil note for first highlight")
+	}
+
+	secondCreated := time.Date(2024, time.April, 12, 8, 0, 0, 0, time.UTC)
+	secondUpdated := time.Date(2024, time.April, 12, 9, 0, 0, 0, time.UTC)
+	if !highlights[1].CreatedAt.Equal(secondCreated) {
+		t.Fatalf("unexpected created_at for second: %v", highlights[1].CreatedAt)
+	}
+	if !highlights[1].UpdatedAt.Equal(secondUpdated) {
+		t.Fatalf("unexpected updated_at for second: %v", highlights[1].UpdatedAt)
+	}
+	if highlights[1].Note == nil || *highlights[1].Note != "remember" {
+		t.Fatalf("unexpected note for second highlight: %v", highlights[1].Note)
+	}
+}
+
 func TestHandleUpdateLinkFavoriteNotFound(t *testing.T) {
 	t.Parallel()
 
