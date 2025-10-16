@@ -97,6 +97,51 @@ func TestHandleCreateLinkInvalidURL(t *testing.T) {
 	}
 }
 
+func TestHandleListLinksEmpty(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{DevUserID: uuid.MustParse("dddddddd-dddd-dddd-dddd-dddddddddddd")}
+	queries := &mockQueries{
+		listLinksFn: func(ctx context.Context, params db.ListLinksParams) ([]db.ListLinksRow, error) {
+			if params.PageLimit != 20 || params.PageOffset != 0 {
+				t.Fatalf("unexpected pagination params: limit=%d offset=%d", params.PageLimit, params.PageOffset)
+			}
+			return []db.ListLinksRow{}, nil
+		},
+		countLinksFn: func(ctx context.Context, params db.CountLinksParams) (int64, error) {
+			return 0, nil
+		},
+	}
+
+	srv := &Server{cfg: cfg, queries: queries, metrics: newTestMetrics()}
+	e := echo.New()
+	srv.RegisterRoutes(e)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/links", nil)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+
+	var resp listLinksResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if resp.TotalCount != 0 {
+		t.Fatalf("expected total count 0, got %d", resp.TotalCount)
+	}
+	if len(resp.Items) != 0 {
+		t.Fatalf("expected no items, got %d", len(resp.Items))
+	}
+	if resp.Limit != 20 || resp.Offset != 0 {
+		t.Fatalf("unexpected pagination metadata: limit=%d offset=%d", resp.Limit, resp.Offset)
+	}
+}
+
 func TestRegisterRoutesHealthEndpoints(t *testing.T) {
 	t.Parallel()
 
