@@ -32,7 +32,7 @@ SELECT COUNT(*)
 FROM links l
 WHERE l.user_id = $1
   AND (
-    $2 IS NULL OR l.favorite = $2
+    COALESCE($2::boolean, l.favorite) = l.favorite
   )
   AND (
     $3 IS NULL
@@ -56,7 +56,7 @@ WHERE l.user_id = $1
 
 type CountLinksParams struct {
 	UserID   pgtype.UUID
-	Favorite interface{}
+	Favorite pgtype.Bool
 	Query    interface{}
 	TagIds   interface{}
 }
@@ -344,7 +344,7 @@ LEFT JOIN LATERAL (
 ) AS highlight_data ON TRUE
 WHERE l.user_id = $1
   AND (
-    $2 IS NULL OR l.favorite = $2
+    COALESCE($2::boolean, l.favorite) = l.favorite
   )
   AND (
     $3 IS NULL
@@ -371,7 +371,7 @@ OFFSET $5
 
 type ListLinksParams struct {
 	UserID     pgtype.UUID
-	Favorite   interface{}
+	Favorite   pgtype.Bool
 	Query      interface{}
 	TagIds     interface{}
 	PageOffset int32

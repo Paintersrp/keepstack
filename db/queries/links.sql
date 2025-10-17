@@ -68,7 +68,7 @@ LEFT JOIN LATERAL (
 ) AS highlight_data ON TRUE
 WHERE l.user_id = sqlc.arg('user_id')
   AND (
-    sqlc.narg('favorite') IS NULL OR l.favorite = sqlc.narg('favorite')
+    COALESCE(sqlc.narg('favorite')::boolean, l.favorite) = l.favorite
   )
   AND (
     sqlc.narg('query') IS NULL
@@ -97,7 +97,7 @@ SELECT COUNT(*)
 FROM links l
 WHERE l.user_id = sqlc.arg('user_id')
   AND (
-    sqlc.narg('favorite') IS NULL OR l.favorite = sqlc.narg('favorite')
+    COALESCE(sqlc.narg('favorite')::boolean, l.favorite) = l.favorite
   )
   AND (
     sqlc.narg('query') IS NULL

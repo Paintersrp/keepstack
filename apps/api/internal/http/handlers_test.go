@@ -1648,7 +1648,7 @@ func TestClassifyReadinessError(t *testing.T) {
 type stubHealthPool struct{}
 
 func (stubHealthPool) Exec(context.Context, string, ...any) (pgconn.CommandTag, error) {
-	return pgconn.CommandTag("SELECT 1"), nil
+	return pgconn.NewCommandTag("SELECT 1"), nil
 }
 
 func (stubHealthPool) Query(context.Context, string, ...any) (pgx.Rows, error) {
