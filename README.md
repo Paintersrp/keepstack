@@ -158,8 +158,11 @@ helm upgrade --install keepstack deploy/charts/keepstack \
 ```
 
 Forward Grafana locally with `make dash-grafana` (defaults to
-`http://localhost:3000`, admin/admin) and open the **Keepstack Overview**
-dashboard. Out of the box it charts:
+`http://localhost:3000`, admin/admin). Set `PROMETHEUS_RELEASE` if your
+cluster uses a different kube-prometheus-stack release name; the target
+port-forwards to `svc/${PROMETHEUS_RELEASE}-grafana` in the `monitoring`
+namespace. Then open the **Keepstack Overview** dashboard. Out of the box it
+charts:
 
 * API request rate, error percentage, and p50/p95 latency
 * Worker job throughput, parse duration, queue lag, and success rate
