@@ -128,7 +128,27 @@ helm-dev:
 	fi
 
 logs:
-	kubectl -n $(NAMESPACE) logs deploy/keepstack-api -f
+	@set -euo pipefail; \
+		namespace="$(NAMESPACE)"; \
+		release="$(RELEASE)"; \
+		chart="$(CHART)"; \
+		selector="app.kubernetes.io/instance=$$release,app.kubernetes.io/component=api"; \
+		deployment="$$(kubectl -n "$$namespace" get deploy -l "$$selector" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"; \
+		if [[ -z "$$deployment" ]]; then \
+			chart_dir="$${chart%/}"; \
+			chart_name="$$(basename "$$chart_dir")"; \
+			if [[ -f "$$chart_dir/Chart.yaml" ]]; then \
+				chart_name="$$(awk 'BEGIN{FS=": *"}/^name:/ {print $$2; exit}' "$$chart_dir/Chart.yaml")"; \
+			fi; \
+			chart_name="$${chart_name:-keepstack}"; \
+			deployment="$${release}-$${chart_name}-api"; \
+		fi; \
+		if [[ -z "$$deployment" ]]; then \
+			echo "Unable to determine API deployment name" >&2; \
+			exit 1; \
+		fi; \
+		echo "Tailing logs for deployment $$deployment in namespace $$namespace"; \
+		kubectl -n "$$namespace" logs deploy/"$$deployment" -f
 
 seed:
 	$(ROOT_DIR)scripts/dev_seed.sh
