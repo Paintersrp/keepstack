@@ -512,8 +512,8 @@ func (s *Server) handleListLinks(c echo.Context) error {
 		return c.JSON(stdhttp.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
-	favoriteParam := c.QueryParam("favorite")
-	var favoriteFilter interface{}
+	favoriteParam := strings.TrimSpace(c.QueryParam("favorite"))
+	favoriteFilter := pgtype.Bool{}
 	favoriteLogValue := "unset"
 	if favoriteParam != "" {
 		parsed, err := strconv.ParseBool(favoriteParam)
