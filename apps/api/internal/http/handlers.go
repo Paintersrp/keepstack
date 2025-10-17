@@ -1510,6 +1510,19 @@ var postgresTimestampLayouts = []string{
 
 func parsePostgresTimestamp(value string) (time.Time, error) {
 	var lastErr error
+
+	if t, err := time.Parse(time.RFC3339Nano, value); err == nil {
+		return t, nil
+	} else {
+		lastErr = err
+	}
+
+	if t, err := time.Parse(time.RFC3339, value); err == nil {
+		return t, nil
+	} else {
+		lastErr = err
+	}
+
 	for _, layout := range postgresTimestampLayouts {
 		t, err := time.Parse(layout, value)
 		if err == nil {
@@ -1517,9 +1530,13 @@ func parsePostgresTimestamp(value string) (time.Time, error) {
 		}
 		lastErr = err
 	}
+
 	return time.Time{}, fmt.Errorf("parse PostgreSQL timestamp %q: %w", value, lastErr)
 }
 
+// decodeHighlights accepts highlight payloads produced by the API. The timestamp
+// fields should use RFC3339 or RFC3339Nano formatting, though legacy
+// PostgreSQL layouts are still supported for older clients.
 func decodeHighlights(data []byte) ([]highlightResponse, error) {
 	if len(data) == 0 {
 		return nil, nil

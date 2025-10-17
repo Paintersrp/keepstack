@@ -142,6 +142,109 @@ func TestHandleListLinksEmpty(t *testing.T) {
 	}
 }
 
+func TestHandleListLinksWithRFC3339NanoHighlights(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{DevUserID: uuid.MustParse("aaaa1111-2222-3333-4444-555566667777")}
+	linkID := uuid.New()
+	createdAt := time.Unix(1_700_000_000, 0).UTC()
+	highlightCreatedStr := "2024-05-01T02:03:04.123456789Z"
+	highlightUpdatedStr := "2024-05-02T03:04:05.987654321Z"
+	highlightJSON := []byte(`[
+               {
+                       "id": "highlight-1",
+                       "text": "A memorable passage",
+                       "note": null,
+                       "created_at": "` + highlightCreatedStr + `",
+                       "updated_at": "` + highlightUpdatedStr + `"
+               }
+       ]`)
+
+	metrics := newTestMetrics()
+
+	queries := &mockQueries{
+		listLinksFn: func(ctx context.Context, params db.ListLinksParams) ([]db.ListLinksRow, error) {
+			if params.PageLimit != 20 || params.PageOffset != 0 {
+				t.Fatalf("unexpected pagination params: limit=%d offset=%d", params.PageLimit, params.PageOffset)
+			}
+			return []db.ListLinksRow{
+				{
+					ID:            uuidToPg(linkID),
+					UserID:        uuidToPg(cfg.DevUserID),
+					Url:           "https://example.com/article",
+					Title:         pgtype.Text{String: "Example", Valid: true},
+					SourceDomain:  pgtype.Text{String: "example.com", Valid: true},
+					CreatedAt:     pgtype.Timestamptz{Time: createdAt, Valid: true},
+					Favorite:      false,
+					ArchiveTitle:  "Example archive",
+					ArchiveByline: "Reporter",
+					Lang:          "en",
+					WordCount:     250,
+					ExtractedText: "Body",
+					TagIds:        nil,
+					TagNames:      nil,
+					Highlights:    highlightJSON,
+				},
+			}, nil
+		},
+		countLinksFn: func(ctx context.Context, params db.CountLinksParams) (int64, error) {
+			return 1, nil
+		},
+	}
+
+	srv := &Server{cfg: cfg, queries: queries, metrics: metrics}
+	e := echo.New()
+	srv.RegisterRoutes(e)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/links", nil)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+
+	var resp listLinksResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if len(resp.Items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(resp.Items))
+	}
+	if len(resp.Items[0].Highlights) != 1 {
+		t.Fatalf("expected 1 highlight, got %d", len(resp.Items[0].Highlights))
+	}
+
+	highlight := resp.Items[0].Highlights[0]
+	wantCreated, err := time.Parse(time.RFC3339Nano, highlightCreatedStr)
+	if err != nil {
+		t.Fatalf("failed to parse expected highlight created_at: %v", err)
+	}
+	wantUpdated, err := time.Parse(time.RFC3339Nano, highlightUpdatedStr)
+	if err != nil {
+		t.Fatalf("failed to parse expected highlight updated_at: %v", err)
+	}
+
+	if !highlight.CreatedAt.Equal(wantCreated) {
+		t.Fatalf("unexpected highlight created_at: got %v want %v", highlight.CreatedAt, wantCreated)
+	}
+	if !highlight.UpdatedAt.Equal(wantUpdated) {
+		t.Fatalf("unexpected highlight updated_at: got %v want %v", highlight.UpdatedAt, wantUpdated)
+	}
+	if highlight.Note != nil {
+		t.Fatalf("expected nil note, got %v", highlight.Note)
+	}
+
+	if got := testutil.ToFloat64(metrics.LinkListSuccess); got != 1 {
+		t.Fatalf("unexpected LinkListSuccess metric: got %v want 1", got)
+	}
+	if got := testutil.ToFloat64(metrics.LinkListFailure); got != 0 {
+		t.Fatalf("unexpected LinkListFailure metric: got %v want 0", got)
+	}
+}
+
 func TestHandleListLinksQueryErrorDoesNotPanic(t *testing.T) {
 	t.Parallel()
 
@@ -338,6 +441,47 @@ func TestDecodeHighlightsPostgresTimestamps(t *testing.T) {
 	}
 	if highlights[1].Note == nil || *highlights[1].Note != "remember" {
 		t.Fatalf("unexpected note for second highlight: %v", highlights[1].Note)
+	}
+}
+
+func TestDecodeHighlightsRFC3339NanoTimestamps(t *testing.T) {
+	t.Parallel()
+
+	createdAt := "2024-04-15T10:11:12.123456789Z"
+	updatedAt := "2024-04-16T11:12:13.987654321Z"
+	payload := []byte(`[
+               {
+                       "id": "nano",
+                       "text": "timestamp",
+                       "note": null,
+                       "created_at": "` + createdAt + `",
+                       "updated_at": "` + updatedAt + `"
+               }
+       ]`)
+
+	highlights, err := decodeHighlights(payload)
+	if err != nil {
+		t.Fatalf("decodeHighlights returned error: %v", err)
+	}
+
+	if len(highlights) != 1 {
+		t.Fatalf("expected 1 highlight, got %d", len(highlights))
+	}
+
+	wantCreated, err := time.Parse(time.RFC3339Nano, createdAt)
+	if err != nil {
+		t.Fatalf("failed to parse expected created_at: %v", err)
+	}
+	wantUpdated, err := time.Parse(time.RFC3339Nano, updatedAt)
+	if err != nil {
+		t.Fatalf("failed to parse expected updated_at: %v", err)
+	}
+
+	if !highlights[0].CreatedAt.Equal(wantCreated) {
+		t.Fatalf("unexpected created_at: got %v want %v", highlights[0].CreatedAt, wantCreated)
+	}
+	if !highlights[0].UpdatedAt.Equal(wantUpdated) {
+		t.Fatalf("unexpected updated_at: got %v want %v", highlights[0].UpdatedAt, wantUpdated)
 	}
 }
 
