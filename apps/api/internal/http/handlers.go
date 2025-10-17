@@ -578,10 +578,29 @@ func (s *Server) handleListLinks(c echo.Context) error {
 	items, err := s.queries.ListLinks(ctx, listParams)
 	if err != nil {
 		s.metrics.LinkListFailure.Inc()
-		c.Logger().Errorf(
-			"list links: queries.ListLinks failed (limit=%d offset=%d favorite=%s query=%q tags=%q tagIDs=%v): %v",
-			limit, offset, favoriteLogValue, queryText, tagsParam, tagIDs, err,
-		)
+
+		var pgErr *pgconn.PgError
+		migrationMessage := ""
+		migrationGap := false
+		if errors.As(err, &pgErr) {
+			migrationMessage, migrationGap = classifyReadinessError(err)
+		}
+
+		logTemplate := "list links: queries.ListLinks failed (limit=%d offset=%d favorite=%s query=%q tags=%q tagIDs=%v): %v"
+		logArgs := []any{limit, offset, favoriteLogValue, queryText, tagsParam, tagIDs, err}
+		if migrationGap {
+			logTemplate += " (classification=%s)"
+			logArgs = append(logArgs, migrationMessage)
+		}
+		c.Logger().Errorf(logTemplate, logArgs...)
+
+		if migrationGap {
+			return c.JSON(stdhttp.StatusServiceUnavailable, map[string]string{
+				"error": migrationMessage,
+				"hint":  "apply outstanding database migrations",
+			})
+		}
+
 		return c.JSON(stdhttp.StatusInternalServerError, map[string]string{"error": "failed to fetch links"})
 	}
 
@@ -597,10 +616,29 @@ func (s *Server) handleListLinks(c echo.Context) error {
 	count, err := s.queries.CountLinks(ctx, countParams)
 	if err != nil {
 		s.metrics.LinkListFailure.Inc()
-		c.Logger().Errorf(
-			"list links: queries.CountLinks failed (limit=%d offset=%d favorite=%s query=%q tags=%q tagIDs=%v): %v",
-			limit, offset, favoriteLogValue, queryText, tagsParam, tagIDs, err,
-		)
+
+		var pgErr *pgconn.PgError
+		migrationMessage := ""
+		migrationGap := false
+		if errors.As(err, &pgErr) {
+			migrationMessage, migrationGap = classifyReadinessError(err)
+		}
+
+		logTemplate := "list links: queries.CountLinks failed (limit=%d offset=%d favorite=%s query=%q tags=%q tagIDs=%v): %v"
+		logArgs := []any{limit, offset, favoriteLogValue, queryText, tagsParam, tagIDs, err}
+		if migrationGap {
+			logTemplate += " (classification=%s)"
+			logArgs = append(logArgs, migrationMessage)
+		}
+		c.Logger().Errorf(logTemplate, logArgs...)
+
+		if migrationGap {
+			return c.JSON(stdhttp.StatusServiceUnavailable, map[string]string{
+				"error": migrationMessage,
+				"hint":  "apply outstanding database migrations",
+			})
+		}
+
 		return c.JSON(stdhttp.StatusInternalServerError, map[string]string{"error": "failed to count links"})
 	}
 
