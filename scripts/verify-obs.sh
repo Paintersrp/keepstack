@@ -74,10 +74,16 @@ start_port_forward() {
   local pf_pid=$!
 
   for _ in {1..20}; do
-    if grep -qiE 'error|already in use' "$pf_log"; then
+    if grep -qiE 'error|already in use|unable to listen on port' "$pf_log"; then
       kill "$pf_pid" >/dev/null 2>&1 || true
       wait "$pf_pid" 2>/dev/null || true
-      log_error "port-forward failed" "resource=${resource_type}/${resource_name}" "log=$(cat "$pf_log")"
+      local pf_output
+      pf_output=$(cat "$pf_log")
+      if grep -qiE 'already in use|unable to listen on port' <<<"$pf_output"; then
+        log_error "kubectl port-forward could not bind to local port" "resource=${resource_type}/${resource_name}" "local_port=${local_port}" "log=${pf_output}"
+      else
+        log_error "port-forward failed" "resource=${resource_type}/${resource_name}" "log=${pf_output}"
+      fi
       rm -f "$pf_log"
       exit 1
     fi
@@ -122,10 +128,35 @@ if [[ -z "$worker_port" ]]; then
   worker_port=$(kubectl -n "$NAMESPACE" get svc "$worker_service" -o jsonpath='{.spec.ports[0].port}')
 fi
 
-api_local_port=${KS_API_METRICS_PORT:-18080}
-worker_local_port=${KS_WORKER_METRICS_PORT:-19090}
+find_free_port() {
+  python3 - <<'PY'
+import socket
+
+with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+    s.bind(("127.0.0.1", 0))
+    print(s.getsockname()[1])
+PY
+}
+
+if [[ -n "${KS_API_METRICS_PORT:-}" ]]; then
+  api_local_port="${KS_API_METRICS_PORT}"
+else
+  require_command python3
+  api_local_port=$(find_free_port)
+fi
+
+if [[ -n "${KS_WORKER_METRICS_PORT:-}" ]]; then
+  worker_local_port="${KS_WORKER_METRICS_PORT}"
+else
+  require_command python3
+  worker_local_port=$(find_free_port)
+  while [[ "$worker_local_port" == "$api_local_port" ]]; do
+    worker_local_port=$(find_free_port)
+  done
+fi
 
 log_info "Port-forwarding metrics" "api_service=${api_service}" "worker_service=${worker_service}"
+log_info "Using local metrics ports" "api=${api_local_port}" "worker=${worker_local_port}"
 
 cleanup() {
   for pid in "${forward_pids[@]:-}"; do
