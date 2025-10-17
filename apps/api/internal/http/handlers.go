@@ -566,7 +566,7 @@ func (s *Server) handleListLinks(c echo.Context) error {
 
 	listParams := db.ListLinksParams{
 		UserID:     uuidToPg(s.cfg.DevUserID),
-		Favorite:   favorite,
+		Favorite:   &favorite,
 		Query:      queryArg,
 		TagIds:     tagArg,
 		PageLimit:  int32(limit),
@@ -589,7 +589,7 @@ func (s *Server) handleListLinks(c echo.Context) error {
 
 	countParams := db.CountLinksParams{
 		UserID:   uuidToPg(s.cfg.DevUserID),
-		Favorite: favorite,
+		Favorite: &favorite,
 		Query:    queryArg,
 	}
 	if len(tagIDs) > 0 {
