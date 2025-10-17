@@ -154,6 +154,12 @@ func (s *Server) handleHealthz(c echo.Context) error {
 			},
 		},
 		{
+			name: "links source_domain column",
+			run: func(ctx context.Context) error {
+				return runReadinessQuery(ctx, s.pool, "SELECT source_domain FROM links LIMIT 0")
+			},
+		},
+		{
 			name: "archives metadata columns",
 			run: func(ctx context.Context) error {
 				return runReadinessQuery(ctx, s.pool, "SELECT title, byline, lang, word_count FROM archives LIMIT 0")
