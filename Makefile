@@ -10,6 +10,7 @@ DEV_VALUES ?= deploy/values/dev.yaml
 VERIFY_JOB ?= keepstack-keepstack-verify-schema
 ROOT_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 CLUSTER ?= keepstack
+PROMETHEUS_RELEASE ?= kube-prom-stack
 
 .PHONY: help d dev-up dev-down build push helm-dev logs seed bootstrap-dev dash-grafana smoke smoke-v02 digest-once backup-now \
         resurfacer-now verify-obs verify-alerts restore-drill rollout-observe smoke-v03 verify-schema test build-local
@@ -187,7 +188,7 @@ bootstrap-dev:
 			echo ""
 
 dash-grafana:
-	kubectl -n monitoring port-forward svc/grafana 3000:80
+	kubectl -n monitoring port-forward svc/$(PROMETHEUS_RELEASE)-grafana 3000:80
 
 smoke:
 	$(ROOT_DIR)scripts/smoke.sh
