@@ -142,6 +142,62 @@ func TestHandleListLinksEmpty(t *testing.T) {
 	}
 }
 
+func TestHandleListLinksFavoriteFilter(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{DevUserID: uuid.MustParse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee")}
+	var capturedListFavorite interface{}
+	var capturedCountFavorite interface{}
+	queries := &mockQueries{
+		listLinksFn: func(ctx context.Context, params db.ListLinksParams) ([]db.ListLinksRow, error) {
+			if params.PageLimit != 20 || params.PageOffset != 0 {
+				t.Fatalf("unexpected pagination params: limit=%d offset=%d", params.PageLimit, params.PageOffset)
+			}
+			capturedListFavorite = params.Favorite
+			return []db.ListLinksRow{}, nil
+		},
+		countLinksFn: func(ctx context.Context, params db.CountLinksParams) (int64, error) {
+			capturedCountFavorite = params.Favorite
+			return 0, nil
+		},
+	}
+
+	srv := &Server{cfg: cfg, queries: queries, metrics: newTestMetrics()}
+	e := echo.New()
+	srv.RegisterRoutes(e)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/links?favorite=true", nil)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+
+	listFavorite, ok := capturedListFavorite.(pgtype.Bool)
+	if !ok {
+		t.Fatalf("expected list favorite filter to be pgtype.Bool, got %T", capturedListFavorite)
+	}
+	if !listFavorite.Valid {
+		t.Fatalf("expected list favorite filter to be valid")
+	}
+	if !listFavorite.Bool {
+		t.Fatalf("expected list favorite filter to be true")
+	}
+
+	countFavorite, ok := capturedCountFavorite.(pgtype.Bool)
+	if !ok {
+		t.Fatalf("expected count favorite filter to be pgtype.Bool, got %T", capturedCountFavorite)
+	}
+	if !countFavorite.Valid {
+		t.Fatalf("expected count favorite filter to be valid")
+	}
+	if !countFavorite.Bool {
+		t.Fatalf("expected count favorite filter to be true")
+	}
+}
+
 func TestHandleListLinksWithRFC3339NanoHighlights(t *testing.T) {
 	t.Parallel()
 

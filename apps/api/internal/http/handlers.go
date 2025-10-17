@@ -513,7 +513,8 @@ func (s *Server) handleListLinks(c echo.Context) error {
 	}
 
 	favoriteParam := c.QueryParam("favorite")
-	favorite := pgtype.Bool{}
+	var favoriteFilter interface{}
+	favoriteLogValue := "unset"
 	if favoriteParam != "" {
 		parsed, err := strconv.ParseBool(favoriteParam)
 		if err != nil {
@@ -521,7 +522,8 @@ func (s *Server) handleListLinks(c echo.Context) error {
 			c.Logger().Errorf("list links: invalid favorite filter %q: %v", favoriteParam, err)
 			return c.JSON(stdhttp.StatusBadRequest, map[string]string{"error": "favorite must be boolean"})
 		}
-		favorite = pgtype.Bool{Bool: parsed, Valid: true}
+		favoriteFilter = pgtype.Bool{Bool: parsed, Valid: true}
+		favoriteLogValue = strconv.FormatBool(parsed)
 	}
 
 	queryText := strings.TrimSpace(c.QueryParam("q"))
@@ -566,7 +568,7 @@ func (s *Server) handleListLinks(c echo.Context) error {
 
 	listParams := db.ListLinksParams{
 		UserID:     uuidToPg(s.cfg.DevUserID),
-		Favorite:   &favorite,
+		Favorite:   favoriteFilter,
 		Query:      queryArg,
 		TagIds:     tagArg,
 		PageLimit:  int32(limit),
@@ -576,10 +578,6 @@ func (s *Server) handleListLinks(c echo.Context) error {
 	items, err := s.queries.ListLinks(ctx, listParams)
 	if err != nil {
 		s.metrics.LinkListFailure.Inc()
-		favoriteLogValue := "unset"
-		if favorite.Valid {
-			favoriteLogValue = strconv.FormatBool(favorite.Bool)
-		}
 		c.Logger().Errorf(
 			"list links: queries.ListLinks failed (limit=%d offset=%d favorite=%s query=%q tags=%q tagIDs=%v): %v",
 			limit, offset, favoriteLogValue, queryText, tagsParam, tagIDs, err,
@@ -589,7 +587,7 @@ func (s *Server) handleListLinks(c echo.Context) error {
 
 	countParams := db.CountLinksParams{
 		UserID:   uuidToPg(s.cfg.DevUserID),
-		Favorite: &favorite,
+		Favorite: favoriteFilter,
 		Query:    queryArg,
 	}
 	if len(tagIDs) > 0 {
@@ -599,10 +597,6 @@ func (s *Server) handleListLinks(c echo.Context) error {
 	count, err := s.queries.CountLinks(ctx, countParams)
 	if err != nil {
 		s.metrics.LinkListFailure.Inc()
-		favoriteLogValue := "unset"
-		if favorite.Valid {
-			favoriteLogValue = strconv.FormatBool(favorite.Bool)
-		}
 		c.Logger().Errorf(
 			"list links: queries.CountLinks failed (limit=%d offset=%d favorite=%s query=%q tags=%q tagIDs=%v): %v",
 			limit, offset, favoriteLogValue, queryText, tagsParam, tagIDs, err,
