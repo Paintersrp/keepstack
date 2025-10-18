@@ -71,7 +71,7 @@ WHERE l.user_id = sqlc.arg('user_id')
     COALESCE(sqlc.narg('favorite')::boolean, l.favorite) = l.favorite
   )
   AND (
-    sqlc.narg('query') IS NULL
+    sqlc.narg('query')::text IS NULL
     OR l.search_tsv @@ plainto_tsquery('english', sqlc.narg('query')::text)
     OR l.url ILIKE '%' || sqlc.narg('query')::text || '%'
   )
@@ -100,7 +100,7 @@ WHERE l.user_id = sqlc.arg('user_id')
     COALESCE(sqlc.narg('favorite')::boolean, l.favorite) = l.favorite
   )
   AND (
-    sqlc.narg('query') IS NULL
+    sqlc.narg('query')::text IS NULL
     OR l.search_tsv @@ plainto_tsquery('english', sqlc.narg('query')::text)
     OR l.url ILIKE '%' || sqlc.narg('query')::text || '%'
   )

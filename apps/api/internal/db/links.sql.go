@@ -35,7 +35,7 @@ WHERE l.user_id = $1
     COALESCE($2::boolean, l.favorite) = l.favorite
   )
   AND (
-    $3 IS NULL
+    $3::text IS NULL
     OR l.search_tsv @@ plainto_tsquery('english', $3::text)
     OR l.url ILIKE '%' || $3::text || '%'
   )
@@ -57,7 +57,7 @@ WHERE l.user_id = $1
 type CountLinksParams struct {
 	UserID   pgtype.UUID
 	Favorite pgtype.Bool
-	Query    interface{}
+	Query    pgtype.Text
 	TagIds   interface{}
 }
 
@@ -347,7 +347,7 @@ WHERE l.user_id = $1
     COALESCE($2::boolean, l.favorite) = l.favorite
   )
   AND (
-    $3 IS NULL
+    $3::text IS NULL
     OR l.search_tsv @@ plainto_tsquery('english', $3::text)
     OR l.url ILIKE '%' || $3::text || '%'
   )
@@ -372,7 +372,7 @@ OFFSET $5
 type ListLinksParams struct {
 	UserID     pgtype.UUID
 	Favorite   pgtype.Bool
-	Query      interface{}
+	Query      pgtype.Text
 	TagIds     interface{}
 	PageOffset int32
 	PageLimit  int32
