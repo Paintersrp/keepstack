@@ -43,7 +43,7 @@ WHERE l.user_id = $1
     OR l.url ILIKE '%' || $3::text || '%'
   )
   AND (
-    $5 IS NULL
+    $5::int4[] IS NULL
     OR NOT EXISTS (
         SELECT 1
         FROM unnest($5::int4[]) AS tag_id
@@ -62,7 +62,7 @@ type CountLinksParams struct {
 	Favorite       pgtype.Bool
 	Query          pgtype.Text
 	EnableFullText bool
-	TagIds         interface{}
+	TagIds         []int32
 }
 
 func (q *Queries) CountLinks(ctx context.Context, arg CountLinksParams) (int64, error) {
@@ -360,7 +360,7 @@ WHERE l.user_id = $1
     OR l.url ILIKE '%' || $3::text || '%'
   )
   AND (
-    $5 IS NULL
+    $5::int4[] IS NULL
     OR NOT EXISTS (
         SELECT 1
         FROM unnest($5::int4[]) AS tag_id
@@ -382,7 +382,7 @@ type ListLinksParams struct {
 	Favorite       pgtype.Bool
 	Query          pgtype.Text
 	EnableFullText bool
-	TagIds         interface{}
+	TagIds         []int32
 	PageOffset     int32
 	PageLimit      int32
 }

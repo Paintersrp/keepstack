@@ -567,17 +567,12 @@ func (s *Server) handleListLinks(c echo.Context) error {
 		}
 	}
 
-	var tagArg interface{}
-	if len(tagIDs) > 0 {
-		tagArg = tagIDs
-	}
-
 	listParams := db.ListLinksParams{
 		UserID:         uuidToPg(s.cfg.DevUserID),
 		Favorite:       favoriteFilter,
 		Query:          queryFilter,
 		EnableFullText: true,
-		TagIds:         tagArg,
+		TagIds:         tagIDs,
 		PageLimit:      int32(limit),
 		PageOffset:     int32(offset),
 	}
@@ -587,9 +582,7 @@ func (s *Server) handleListLinks(c echo.Context) error {
 		Favorite:       favoriteFilter,
 		Query:          queryFilter,
 		EnableFullText: true,
-	}
-	if len(tagIDs) > 0 {
-		countParams.TagIds = tagIDs
+		TagIds:         tagIDs,
 	}
 
 	items, err := s.queries.ListLinks(ctx, listParams)

@@ -143,6 +143,53 @@ func TestHandleListLinksEmpty(t *testing.T) {
 	}
 }
 
+func TestHandleListLinksNoTagsParam(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{DevUserID: uuid.MustParse("cccccccc-cccc-cccc-cccc-cccccccccccc")}
+
+	var capturedListTagIDs []int32
+	var capturedCountTagIDs []int32
+
+	queries := &mockQueries{
+		listLinksFn: func(ctx context.Context, params db.ListLinksParams) ([]db.ListLinksRow, error) {
+			if params.TagIds != nil {
+				t.Fatalf("expected list tag IDs to be nil, got %v", params.TagIds)
+			}
+			capturedListTagIDs = params.TagIds
+			return []db.ListLinksRow{}, nil
+		},
+		countLinksFn: func(ctx context.Context, params db.CountLinksParams) (int64, error) {
+			if params.TagIds != nil {
+				t.Fatalf("expected count tag IDs to be nil, got %v", params.TagIds)
+			}
+			capturedCountTagIDs = params.TagIds
+			return 0, nil
+		},
+	}
+
+	srv := &Server{cfg: cfg, queries: queries, metrics: newTestMetrics(), publisher: &stubPublisher{}}
+
+	e := echo.New()
+	srv.RegisterRoutes(e)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/links", nil)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+
+	if capturedListTagIDs != nil {
+		t.Fatalf("expected list tag IDs to remain nil, got %v", capturedListTagIDs)
+	}
+	if capturedCountTagIDs != nil {
+		t.Fatalf("expected count tag IDs to remain nil, got %v", capturedCountTagIDs)
+	}
+}
+
 func TestHandleListLinksFavoriteFilter(t *testing.T) {
 	t.Parallel()
 
