@@ -598,12 +598,25 @@ func (s *Server) handleListLinks(c echo.Context) error {
 			logTemplate += " (classification=%s)"
 			logArgs = append(logArgs, migrationMessage)
 		}
+		if pgErr != nil {
+			logTemplate += " (pgcode=%s message=%q detail=%q)"
+			logArgs = append(logArgs, pgErr.Code, pgErr.Message, pgErr.Detail)
+		}
 		c.Logger().Errorf(logTemplate, logArgs...)
 
 		if migrationGap {
 			return c.JSON(stdhttp.StatusServiceUnavailable, map[string]string{
 				"error": migrationMessage,
 				"hint":  "apply outstanding database migrations",
+			})
+		}
+
+		if s.cfg.DevMode && pgErr != nil {
+			return c.JSON(stdhttp.StatusInternalServerError, map[string]string{
+				"error":   "failed to fetch links",
+				"code":    pgErr.Code,
+				"message": pgErr.Message,
+				"detail":  pgErr.Detail,
 			})
 		}
 

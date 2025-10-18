@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -456,6 +457,84 @@ func TestHandleListLinksQueryErrorDoesNotPanic(t *testing.T) {
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("expected status %d, got %d", http.StatusInternalServerError, rec.Code)
+	}
+}
+
+func TestHandleListLinksLogsPgErrorDetails(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{DevUserID: uuid.MustParse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee")}
+	pgErr := &pgconn.PgError{Code: "23505", Message: "duplicate key value violates unique constraint", Detail: "Key (id)=(1) already exists."}
+	queries := &mockQueries{
+		listLinksFn: func(ctx context.Context, params db.ListLinksParams) ([]db.ListLinksRow, error) {
+			return nil, pgErr
+		},
+	}
+
+	srv := &Server{cfg: cfg, queries: queries, metrics: newTestMetrics()}
+	e := echo.New()
+	buf := &bytes.Buffer{}
+	e.Logger.SetOutput(buf)
+	srv.RegisterRoutes(e)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/links", nil)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status %d, got %d", http.StatusInternalServerError, rec.Code)
+	}
+
+	logOutput := buf.String()
+	if !strings.Contains(logOutput, "pgcode=23505") {
+		t.Fatalf("expected log output to include pg code: got %q", logOutput)
+	}
+	if !strings.Contains(logOutput, pgErr.Message) {
+		t.Fatalf("expected log output to include pg error message: got %q", logOutput)
+	}
+	if !strings.Contains(logOutput, pgErr.Detail) {
+		t.Fatalf("expected log output to include pg error detail: got %q", logOutput)
+	}
+}
+
+func TestHandleListLinksDevModeIncludesPgErrorDetailsInResponse(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{DevUserID: uuid.MustParse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"), DevMode: true}
+	pgErr := &pgconn.PgError{Code: "23505", Message: "duplicate key value violates unique constraint", Detail: "Key (id)=(1) already exists."}
+	queries := &mockQueries{
+		listLinksFn: func(ctx context.Context, params db.ListLinksParams) ([]db.ListLinksRow, error) {
+			return nil, pgErr
+		},
+	}
+
+	srv := &Server{cfg: cfg, queries: queries, metrics: newTestMetrics()}
+	e := echo.New()
+	srv.RegisterRoutes(e)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/links", nil)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status %d, got %d", http.StatusInternalServerError, rec.Code)
+	}
+
+	var body map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("failed to decode response body: %v", err)
+	}
+
+	if body["code"] != pgErr.Code {
+		t.Fatalf("expected response to include pg error code %q, got %q", pgErr.Code, body["code"])
+	}
+	if body["message"] != pgErr.Message {
+		t.Fatalf("expected response to include pg error message %q, got %q", pgErr.Message, body["message"])
+	}
+	if body["detail"] != pgErr.Detail {
+		t.Fatalf("expected response to include pg error detail %q, got %q", pgErr.Detail, body["detail"])
 	}
 }
 
