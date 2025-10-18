@@ -72,8 +72,8 @@ WHERE l.user_id = sqlc.arg('user_id')
   )
   AND (
     sqlc.narg('query') IS NULL
-    OR l.search_tsv @@ plainto_tsquery('english', sqlc.narg('query'))
-    OR l.url ILIKE '%' || sqlc.narg('query') || '%'
+    OR l.search_tsv @@ plainto_tsquery('english', sqlc.narg('query')::text)
+    OR l.url ILIKE '%' || sqlc.narg('query')::text || '%'
   )
   AND (
     sqlc.narg('tag_ids') IS NULL
@@ -101,8 +101,8 @@ WHERE l.user_id = sqlc.arg('user_id')
   )
   AND (
     sqlc.narg('query') IS NULL
-    OR l.search_tsv @@ plainto_tsquery('english', sqlc.narg('query'))
-    OR l.url ILIKE '%' || sqlc.narg('query') || '%'
+    OR l.search_tsv @@ plainto_tsquery('english', sqlc.narg('query')::text)
+    OR l.url ILIKE '%' || sqlc.narg('query')::text || '%'
   )
   AND (
     sqlc.narg('tag_ids') IS NULL
