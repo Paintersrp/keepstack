@@ -76,7 +76,7 @@ WHERE l.user_id = sqlc.arg('user_id')
     OR l.url ILIKE '%' || sqlc.narg('query')::text || '%'
   )
   AND (
-    sqlc.narg('tag_ids') IS NULL
+    sqlc.narg('tag_ids')::int4[] IS NULL
     OR NOT EXISTS (
         SELECT 1
         FROM unnest(sqlc.narg('tag_ids')::int4[]) AS tag_id
@@ -105,7 +105,7 @@ WHERE l.user_id = sqlc.arg('user_id')
     OR l.url ILIKE '%' || sqlc.narg('query')::text || '%'
   )
   AND (
-    sqlc.narg('tag_ids') IS NULL
+    sqlc.narg('tag_ids')::int4[] IS NULL
     OR NOT EXISTS (
         SELECT 1
         FROM unnest(sqlc.narg('tag_ids')::int4[]) AS tag_id

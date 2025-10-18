@@ -40,7 +40,7 @@ WHERE l.user_id = $1
     OR l.url ILIKE '%' || $3::text || '%'
   )
   AND (
-    $4 IS NULL
+    $4::int4[] IS NULL
     OR NOT EXISTS (
         SELECT 1
         FROM unnest($4::int4[]) AS tag_id
@@ -352,7 +352,7 @@ WHERE l.user_id = $1
     OR l.url ILIKE '%' || $3::text || '%'
   )
   AND (
-    $4 IS NULL
+    $4::int4[] IS NULL
     OR NOT EXISTS (
         SELECT 1
         FROM unnest($4::int4[]) AS tag_id
