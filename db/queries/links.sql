@@ -41,7 +41,7 @@ SELECT l.id,
        COALESCE(a.extracted_text, '') AS extracted_text,
        COALESCE(tag_data.tag_ids, '{}'::INTEGER[]) AS tag_ids,
        COALESCE(tag_data.tag_names, '{}'::TEXT[]) AS tag_names,
-       COALESCE(highlight_data.highlights, '[]'::JSON) AS highlights
+       COALESCE(highlight_data.highlights, '[]'::JSON)::text AS highlights
 FROM links l
 LEFT JOIN archives a ON a.link_id = l.id
 LEFT JOIN LATERAL (
@@ -183,7 +183,7 @@ SELECT u.id,
        COALESCE(a.extracted_text, '') AS extracted_text,
        COALESCE(tag_data.tag_ids, '{}'::INTEGER[]) AS tag_ids,
        COALESCE(tag_data.tag_names, '{}'::TEXT[]) AS tag_names,
-       COALESCE(highlight_data.highlights, '[]'::JSON) AS highlights
+       COALESCE(highlight_data.highlights, '[]'::JSON)::text AS highlights
 FROM updated u
 LEFT JOIN archives a ON a.link_id = u.id
 LEFT JOIN LATERAL (

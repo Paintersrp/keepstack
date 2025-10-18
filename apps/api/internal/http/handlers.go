@@ -1230,7 +1230,7 @@ func toLinkResponse(row db.ListLinksRow) (linkResponse, error) {
 	}
 
 	tags := mergeTagArrays(row.TagIds, row.TagNames)
-	highlights, err := decodeHighlights(row.Highlights)
+	highlights, err := decodeHighlights([]byte(row.Highlights))
 	if err != nil {
 		return linkResponse{}, err
 	}

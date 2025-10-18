@@ -317,7 +317,7 @@ SELECT l.id,
        COALESCE(a.extracted_text, '') AS extracted_text,
        COALESCE(tag_data.tag_ids, '{}'::INTEGER[]) AS tag_ids,
        COALESCE(tag_data.tag_names, '{}'::TEXT[]) AS tag_names,
-       COALESCE(highlight_data.highlights, '[]'::JSON) AS highlights
+       COALESCE(highlight_data.highlights, '[]'::JSON)::text AS highlights
 FROM links l
 LEFT JOIN archives a ON a.link_id = l.id
 LEFT JOIN LATERAL (
@@ -394,7 +394,7 @@ type ListLinksRow struct {
 	ExtractedText string
 	TagIds        interface{}
 	TagNames      interface{}
-	Highlights    []byte
+	Highlights    string
 }
 
 func (q *Queries) ListLinks(ctx context.Context, arg ListLinksParams) ([]ListLinksRow, error) {
@@ -605,7 +605,7 @@ SELECT u.id,
        COALESCE(a.extracted_text, '') AS extracted_text,
        COALESCE(tag_data.tag_ids, '{}'::INTEGER[]) AS tag_ids,
        COALESCE(tag_data.tag_names, '{}'::TEXT[]) AS tag_names,
-       COALESCE(highlight_data.highlights, '[]'::JSON) AS highlights
+       COALESCE(highlight_data.highlights, '[]'::JSON)::text AS highlights
 FROM updated u
 LEFT JOIN archives a ON a.link_id = u.id
 LEFT JOIN LATERAL (
@@ -653,7 +653,7 @@ type UpdateLinkFavoriteRow struct {
 	ExtractedText string
 	TagIds        interface{}
 	TagNames      interface{}
-	Highlights    []byte
+	Highlights    string
 }
 
 func (q *Queries) UpdateLinkFavorite(ctx context.Context, arg UpdateLinkFavoriteParams) (UpdateLinkFavoriteRow, error) {
