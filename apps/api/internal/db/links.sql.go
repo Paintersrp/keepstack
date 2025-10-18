@@ -36,14 +36,17 @@ WHERE l.user_id = $1
   )
   AND (
     $3::text IS NULL
-    OR l.search_tsv @@ plainto_tsquery('english', $3::text)
+    OR CASE
+        WHEN $4::boolean THEN l.search_tsv @@ plainto_tsquery('english', $3::text)
+        ELSE FALSE
+    END
     OR l.url ILIKE '%' || $3::text || '%'
   )
   AND (
-    $4 IS NULL
+    $5 IS NULL
     OR NOT EXISTS (
         SELECT 1
-        FROM unnest($4::int4[]) AS tag_id
+        FROM unnest($5::int4[]) AS tag_id
         WHERE NOT EXISTS (
             SELECT 1
             FROM link_tags lt
@@ -55,10 +58,11 @@ WHERE l.user_id = $1
 `
 
 type CountLinksParams struct {
-	UserID   pgtype.UUID
-	Favorite pgtype.Bool
-	Query    pgtype.Text
-	TagIds   interface{}
+	UserID         pgtype.UUID
+	Favorite       pgtype.Bool
+	Query          pgtype.Text
+	EnableFullText bool
+	TagIds         interface{}
 }
 
 func (q *Queries) CountLinks(ctx context.Context, arg CountLinksParams) (int64, error) {
@@ -66,6 +70,7 @@ func (q *Queries) CountLinks(ctx context.Context, arg CountLinksParams) (int64, 
 		arg.UserID,
 		arg.Favorite,
 		arg.Query,
+		arg.EnableFullText,
 		arg.TagIds,
 	)
 	var count int64
@@ -348,14 +353,17 @@ WHERE l.user_id = $1
   )
   AND (
     $3::text IS NULL
-    OR l.search_tsv @@ plainto_tsquery('english', $3::text)
+    OR CASE
+        WHEN $4::boolean THEN l.search_tsv @@ plainto_tsquery('english', $3::text)
+        ELSE FALSE
+    END
     OR l.url ILIKE '%' || $3::text || '%'
   )
   AND (
-    $4 IS NULL
+    $5 IS NULL
     OR NOT EXISTS (
         SELECT 1
-        FROM unnest($4::int4[]) AS tag_id
+        FROM unnest($5::int4[]) AS tag_id
         WHERE NOT EXISTS (
             SELECT 1
             FROM link_tags lt
@@ -365,17 +373,18 @@ WHERE l.user_id = $1
     )
   )
 ORDER BY l.created_at DESC
-LIMIT $6
-OFFSET $5
+LIMIT $7
+OFFSET $6
 `
 
 type ListLinksParams struct {
-	UserID     pgtype.UUID
-	Favorite   pgtype.Bool
-	Query      pgtype.Text
-	TagIds     interface{}
-	PageOffset int32
-	PageLimit  int32
+	UserID         pgtype.UUID
+	Favorite       pgtype.Bool
+	Query          pgtype.Text
+	EnableFullText bool
+	TagIds         interface{}
+	PageOffset     int32
+	PageLimit      int32
 }
 
 type ListLinksRow struct {
@@ -402,6 +411,7 @@ func (q *Queries) ListLinks(ctx context.Context, arg ListLinksParams) ([]ListLin
 		arg.UserID,
 		arg.Favorite,
 		arg.Query,
+		arg.EnableFullText,
 		arg.TagIds,
 		arg.PageOffset,
 		arg.PageLimit,

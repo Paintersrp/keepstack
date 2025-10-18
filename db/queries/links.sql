@@ -72,7 +72,10 @@ WHERE l.user_id = sqlc.arg('user_id')
   )
   AND (
     sqlc.narg('query')::text IS NULL
-    OR l.search_tsv @@ plainto_tsquery('english', sqlc.narg('query')::text)
+    OR CASE
+        WHEN sqlc.arg('enable_full_text')::boolean THEN l.search_tsv @@ plainto_tsquery('english', sqlc.narg('query')::text)
+        ELSE FALSE
+    END
     OR l.url ILIKE '%' || sqlc.narg('query')::text || '%'
   )
   AND (
@@ -101,7 +104,10 @@ WHERE l.user_id = sqlc.arg('user_id')
   )
   AND (
     sqlc.narg('query')::text IS NULL
-    OR l.search_tsv @@ plainto_tsquery('english', sqlc.narg('query')::text)
+    OR CASE
+        WHEN sqlc.arg('enable_full_text')::boolean THEN l.search_tsv @@ plainto_tsquery('english', sqlc.narg('query')::text)
+        ELSE FALSE
+    END
     OR l.url ILIKE '%' || sqlc.narg('query')::text || '%'
   )
   AND (
