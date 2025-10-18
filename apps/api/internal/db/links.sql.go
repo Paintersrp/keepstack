@@ -35,9 +35,9 @@ WHERE l.user_id = $1
     COALESCE($2::boolean, l.favorite) = l.favorite
   )
   AND (
-    $3 IS NULL
-    OR l.search_tsv @@ plainto_tsquery('english', $3)
-    OR l.url ILIKE '%' || $3 || '%'
+    ($3)::text IS NULL
+    OR l.search_tsv @@ plainto_tsquery('english', ($3)::text)
+    OR l.url ILIKE '%' || ($3)::text || '%'
   )
   AND (
     $4 IS NULL
@@ -347,9 +347,9 @@ WHERE l.user_id = $1
     COALESCE($2::boolean, l.favorite) = l.favorite
   )
   AND (
-    $3 IS NULL
-    OR l.search_tsv @@ plainto_tsquery('english', $3)
-    OR l.url ILIKE '%' || $3 || '%'
+    ($3)::text IS NULL
+    OR l.search_tsv @@ plainto_tsquery('english', ($3)::text)
+    OR l.url ILIKE '%' || ($3)::text || '%'
   )
   AND (
     $4 IS NULL
