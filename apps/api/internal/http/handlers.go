@@ -533,9 +533,9 @@ func (s *Server) handleListLinks(c echo.Context) error {
 	}
 
 	queryText := strings.TrimSpace(c.QueryParam("q"))
-	queryArg := pgtype.Text{}
+	var queryArg interface{}
 	if queryText != "" {
-		queryArg = pgtype.Text{String: queryText, Valid: true}
+		queryArg = queryText
 	}
 
 	tagsParam := strings.TrimSpace(c.QueryParam("tags"))

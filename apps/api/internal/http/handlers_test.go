@@ -200,6 +200,64 @@ func TestHandleListLinksFavoriteFilter(t *testing.T) {
 	}
 }
 
+func TestHandleListLinksSearchQuery(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{DevUserID: uuid.MustParse("99999999-aaaa-bbbb-cccc-dddddddddddd")}
+
+	var capturedListQuery interface{}
+	var capturedCountQuery interface{}
+
+	queries := &mockQueries{
+		listLinksFn: func(ctx context.Context, params db.ListLinksParams) ([]db.ListLinksRow, error) {
+			capturedListQuery = params.Query
+			return []db.ListLinksRow{}, nil
+		},
+		countLinksFn: func(ctx context.Context, params db.CountLinksParams) (int64, error) {
+			capturedCountQuery = params.Query
+			return 0, nil
+		},
+	}
+
+	publisher := &stubPublisher{}
+	srv := &Server{cfg: cfg, queries: queries, metrics: newTestMetrics(), publisher: publisher}
+	e := echo.New()
+	srv.RegisterRoutes(e)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/links?q=  time  ", nil)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+
+	if capturedListQuery == nil {
+		t.Fatalf("expected list query to be captured")
+	}
+
+	listQuery, ok := capturedListQuery.(string)
+	if !ok {
+		t.Fatalf("expected list query to be string, got %T", capturedListQuery)
+	}
+	if listQuery != "time" {
+		t.Fatalf("expected list query to be 'time', got %q", listQuery)
+	}
+
+	if capturedCountQuery == nil {
+		t.Fatalf("expected count query to be captured")
+	}
+
+	countQuery, ok := capturedCountQuery.(string)
+	if !ok {
+		t.Fatalf("expected count query to be string, got %T", capturedCountQuery)
+	}
+	if countQuery != "time" {
+		t.Fatalf("expected count query to be 'time', got %q", countQuery)
+	}
+}
+
 func TestHandleListLinksWithRFC3339NanoHighlights(t *testing.T) {
 	t.Parallel()
 
