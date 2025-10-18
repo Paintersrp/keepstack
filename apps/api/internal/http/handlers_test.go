@@ -205,16 +205,22 @@ func TestHandleListLinksSearchQuery(t *testing.T) {
 
 	cfg := config.Config{DevUserID: uuid.MustParse("99999999-aaaa-bbbb-cccc-dddddddddddd")}
 
-	var capturedListQuery interface{}
-	var capturedCountQuery interface{}
+	var (
+		capturedListQuery  pgtype.Text
+		capturedCountQuery pgtype.Text
+		listQueryCaptured  bool
+		countQueryCaptured bool
+	)
 
 	queries := &mockQueries{
 		listLinksFn: func(ctx context.Context, params db.ListLinksParams) ([]db.ListLinksRow, error) {
 			capturedListQuery = params.Query
+			listQueryCaptured = true
 			return []db.ListLinksRow{}, nil
 		},
 		countLinksFn: func(ctx context.Context, params db.CountLinksParams) (int64, error) {
 			capturedCountQuery = params.Query
+			countQueryCaptured = true
 			return 0, nil
 		},
 	}
@@ -233,28 +239,24 @@ func TestHandleListLinksSearchQuery(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
 	}
 
-	if capturedListQuery == nil {
+	if !listQueryCaptured {
 		t.Fatalf("expected list query to be captured")
 	}
-
-	listQuery, ok := capturedListQuery.(string)
-	if !ok {
-		t.Fatalf("expected list query to be string, got %T", capturedListQuery)
+	if !capturedListQuery.Valid {
+		t.Fatalf("expected list query to be valid")
 	}
-	if listQuery != "time" {
-		t.Fatalf("expected list query to be 'time', got %q", listQuery)
+	if capturedListQuery.String != "time" {
+		t.Fatalf("expected list query to be 'time', got %q", capturedListQuery.String)
 	}
 
-	if capturedCountQuery == nil {
+	if !countQueryCaptured {
 		t.Fatalf("expected count query to be captured")
 	}
-
-	countQuery, ok := capturedCountQuery.(string)
-	if !ok {
-		t.Fatalf("expected count query to be string, got %T", capturedCountQuery)
+	if !capturedCountQuery.Valid {
+		t.Fatalf("expected count query to be valid")
 	}
-	if countQuery != "time" {
-		t.Fatalf("expected count query to be 'time', got %q", countQuery)
+	if capturedCountQuery.String != "time" {
+		t.Fatalf("expected count query to be 'time', got %q", capturedCountQuery.String)
 	}
 }
 
