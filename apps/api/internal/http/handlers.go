@@ -533,9 +533,9 @@ func (s *Server) handleListLinks(c echo.Context) error {
 	}
 
 	queryText := strings.TrimSpace(c.QueryParam("q"))
-	var queryArg interface{}
+	queryFilter := pgtype.Text{}
 	if queryText != "" {
-		queryArg = queryText
+		queryFilter = pgtype.Text{String: queryText, Valid: true}
 	}
 
 	tagsParam := strings.TrimSpace(c.QueryParam("tags"))
@@ -575,7 +575,7 @@ func (s *Server) handleListLinks(c echo.Context) error {
 	listParams := db.ListLinksParams{
 		UserID:     uuidToPg(s.cfg.DevUserID),
 		Favorite:   favoriteFilter,
-		Query:      queryArg,
+		Query:      queryFilter,
 		TagIds:     tagArg,
 		PageLimit:  int32(limit),
 		PageOffset: int32(offset),
@@ -613,7 +613,7 @@ func (s *Server) handleListLinks(c echo.Context) error {
 	countParams := db.CountLinksParams{
 		UserID:   uuidToPg(s.cfg.DevUserID),
 		Favorite: favoriteFilter,
-		Query:    queryArg,
+		Query:    queryFilter,
 	}
 	if len(tagIDs) > 0 {
 		countParams.TagIds = tagIDs
