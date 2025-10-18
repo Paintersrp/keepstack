@@ -113,7 +113,8 @@ func TestHandleListLinksEmpty(t *testing.T) {
 		},
 	}
 
-	srv := &Server{cfg: cfg, queries: queries, metrics: newTestMetrics()}
+	publisher := &stubPublisher{}
+	srv := &Server{cfg: cfg, queries: queries, metrics: newTestMetrics(), publisher: publisher}
 	e := echo.New()
 	srv.RegisterRoutes(e)
 
@@ -162,7 +163,8 @@ func TestHandleListLinksFavoriteFilter(t *testing.T) {
 		},
 	}
 
-	srv := &Server{cfg: cfg, queries: queries, metrics: newTestMetrics()}
+	publisher := &stubPublisher{}
+	srv := &Server{cfg: cfg, queries: queries, metrics: newTestMetrics(), publisher: publisher}
 	e := echo.New()
 	srv.RegisterRoutes(e)
 
@@ -239,7 +241,7 @@ func TestHandleListLinksWithRFC3339NanoHighlights(t *testing.T) {
 					ExtractedText: "Body",
 					TagIds:        nil,
 					TagNames:      nil,
-					Highlights:    highlightJSON,
+					Highlights:    string(highlightJSON),
 				},
 			}, nil
 		},
@@ -298,6 +300,78 @@ func TestHandleListLinksWithRFC3339NanoHighlights(t *testing.T) {
 	}
 	if got := testutil.ToFloat64(metrics.LinkListFailure); got != 0 {
 		t.Fatalf("unexpected LinkListFailure metric: got %v want 0", got)
+	}
+}
+
+func TestHandleListLinksWithoutHighlights(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{DevUserID: uuid.MustParse("cccccccc-cccc-cccc-cccc-cccccccccccc")}
+	linkID := uuid.New()
+	createdAt := time.Unix(1_700_000_000, 0).UTC()
+
+	var stored []db.ListLinksRow
+	queries := &mockQueries{
+		createLinkFn: func(ctx context.Context, params db.CreateLinkParams) (db.CreateLinkRow, error) {
+			stored = []db.ListLinksRow{
+				{
+					ID:         uuidToPg(linkID),
+					UserID:     uuidToPg(cfg.DevUserID),
+					Url:        params.Url,
+					CreatedAt:  pgtype.Timestamptz{Time: createdAt, Valid: true},
+					Favorite:   false,
+					TagIds:     nil,
+					TagNames:   nil,
+					Highlights: "[]",
+				},
+			}
+
+			return db.CreateLinkRow{
+				ID:        uuidToPg(linkID),
+				UserID:    uuidToPg(cfg.DevUserID),
+				Url:       params.Url,
+				CreatedAt: pgtype.Timestamptz{Time: createdAt, Valid: true},
+				Favorite:  false,
+			}, nil
+		},
+		listLinksFn: func(ctx context.Context, params db.ListLinksParams) ([]db.ListLinksRow, error) {
+			return stored, nil
+		},
+		countLinksFn: func(ctx context.Context, params db.CountLinksParams) (int64, error) {
+			return int64(len(stored)), nil
+		},
+	}
+
+	publisher := &stubPublisher{}
+	srv := &Server{cfg: cfg, queries: queries, metrics: newTestMetrics(), publisher: publisher}
+	e := echo.New()
+	srv.RegisterRoutes(e)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/links", strings.NewReader(`{"url":"https://example.com"}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, rec.Code)
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/links", nil)
+	listRec := httptest.NewRecorder()
+	e.ServeHTTP(listRec, listReq)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, listRec.Code)
+	}
+
+	var resp listLinksResponse
+	if err := json.Unmarshal(listRec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if len(resp.Items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(resp.Items))
+	}
+	if len(resp.Items[0].Highlights) != 0 {
+		t.Fatalf("expected no highlights, got %d", len(resp.Items[0].Highlights))
 	}
 }
 
@@ -405,7 +479,7 @@ func TestHandleUpdateLinkFavorite(t *testing.T) {
 				ExtractedText: "Summary",
 				TagIds:        []int32{1},
 				TagNames:      []string{"reading"},
-				Highlights:    []byte("[]"),
+				Highlights:    "[]",
 			}, nil
 		},
 	}
@@ -799,7 +873,7 @@ func TestHandleListLinksTagFilter(t *testing.T) {
 				Favorite:     false,
 				Title:        pgtype.Text{Valid: false},
 				SourceDomain: pgtype.Text{Valid: false},
-				Highlights:   []byte("[]"),
+				Highlights:   "[]",
 			}}, nil
 		},
 		countLinksFn: func(ctx context.Context, params db.CountLinksParams) (int64, error) {
