@@ -736,6 +736,10 @@ func (s *Server) handleListRecommendations(c echo.Context) error {
 	})
 }
 
+// isFullTextParseError reports whether a PostgreSQL error was caused by
+// parsing a user supplied search term. These errors are considered retryable
+// because the handler can safely fall back to the slower, non full text
+// implementation without changing the semantics of the request.
 func isFullTextParseError(err error) bool {
 	var pgErr *pgconn.PgError
 	if !errors.As(err, &pgErr) {
@@ -743,7 +747,11 @@ func isFullTextParseError(err error) bool {
 	}
 
 	switch pgErr.Code {
-	case pgerrcode.InvalidParameterValue, pgerrcode.SyntaxError, pgerrcode.InvalidTextRepresentation:
+	case pgerrcode.InvalidParameterValue, // malformed tsquery input
+		pgerrcode.SyntaxError,               // tokenizer rejected the query string
+		pgerrcode.InvalidTextRepresentation, // invalid lexeme representation
+		pgerrcode.InvalidRegularExpression,  // unsupported regular expression syntax
+		pgerrcode.InvalidEscapeSequence:     // invalid escape sequence in the query
 		return true
 	default:
 		return false

@@ -462,84 +462,99 @@ func TestHandleListLinksQueryErrorDoesNotPanic(t *testing.T) {
 func TestHandleListLinksFullTextFallback(t *testing.T) {
 	t.Parallel()
 
-	const slug = "smoke-1735689600-4242"
+	testCases := []struct {
+		name string
+		code string
+	}{
+		{name: "invalid parameter", code: pgerrcode.InvalidParameterValue},
+		{name: "invalid regex", code: pgerrcode.InvalidRegularExpression},
+	}
 
-	cfg := config.Config{DevUserID: uuid.MustParse("dddddddd-dddd-dddd-dddd-dddddddddddd")}
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	linkID := uuid.New()
-	createdAt := time.Unix(1_700_000_000, 0).UTC()
+			const slug = "smoke-1735689600-4242"
 
-	var listCalls int
-	queries := &mockQueries{
-		listLinksFn: func(ctx context.Context, params db.ListLinksParams) ([]db.ListLinksRow, error) {
-			listCalls++
-			if listCalls == 1 {
-				if !params.EnableFullText {
-					t.Fatalf("expected full text search enabled on first call")
-				}
-				return nil, &pgconn.PgError{Code: pgerrcode.InvalidParameterValue}
-			}
-			if params.EnableFullText {
-				t.Fatalf("expected fallback call to disable full text search")
-			}
-			return []db.ListLinksRow{
-				{
-					ID:           uuidToPg(linkID),
-					UserID:       uuidToPg(cfg.DevUserID),
-					Url:          "https://example.com/" + slug,
-					Title:        pgtype.Text{String: "Example", Valid: true},
-					CreatedAt:    pgtype.Timestamptz{Time: createdAt, Valid: true},
-					Favorite:     false,
-					TagIds:       nil,
-					TagNames:     nil,
-					Highlights:   "[]",
-					ArchiveTitle: "",
+			cfg := config.Config{DevUserID: uuid.MustParse("dddddddd-dddd-dddd-dddd-dddddddddddd")}
+
+			linkID := uuid.New()
+			createdAt := time.Unix(1_700_000_000, 0).UTC()
+
+			var listCalls int
+			queries := &mockQueries{
+				listLinksFn: func(ctx context.Context, params db.ListLinksParams) ([]db.ListLinksRow, error) {
+					listCalls++
+					if listCalls == 1 {
+						if !params.EnableFullText {
+							t.Fatalf("expected full text search enabled on first call")
+						}
+						return nil, &pgconn.PgError{Code: tc.code}
+					}
+					if params.EnableFullText {
+						t.Fatalf("expected fallback call to disable full text search")
+					}
+					return []db.ListLinksRow{
+						{
+							ID:           uuidToPg(linkID),
+							UserID:       uuidToPg(cfg.DevUserID),
+							Url:          "https://example.com/" + slug,
+							Title:        pgtype.Text{String: "Example", Valid: true},
+							CreatedAt:    pgtype.Timestamptz{Time: createdAt, Valid: true},
+							Favorite:     false,
+							TagIds:       nil,
+							TagNames:     nil,
+							Highlights:   "[]",
+							ArchiveTitle: "",
+						},
+					}, nil
 				},
-			}, nil
-		},
-		countLinksFn: func(ctx context.Context, params db.CountLinksParams) (int64, error) {
-			if params.EnableFullText {
-				t.Fatalf("expected count fallback to disable full text search")
+				countLinksFn: func(ctx context.Context, params db.CountLinksParams) (int64, error) {
+					if params.EnableFullText {
+						t.Fatalf("expected count fallback to disable full text search")
+					}
+					return 1, nil
+				},
 			}
-			return 1, nil
-		},
-	}
 
-	metrics := newTestMetrics()
-	srv := &Server{cfg: cfg, queries: queries, metrics: metrics}
-	e := echo.New()
-	srv.RegisterRoutes(e)
+			metrics := newTestMetrics()
+			srv := &Server{cfg: cfg, queries: queries, metrics: metrics}
+			e := echo.New()
+			srv.RegisterRoutes(e)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/links?q="+slug, nil)
-	rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "/api/links?q="+slug, nil)
+			rec := httptest.NewRecorder()
 
-	e.ServeHTTP(rec, req)
+			e.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
-	}
+			if rec.Code != http.StatusOK {
+				t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+			}
 
-	if listCalls != 2 {
-		t.Fatalf("expected two list calls, got %d", listCalls)
-	}
+			if listCalls != 2 {
+				t.Fatalf("expected two list calls, got %d", listCalls)
+			}
 
-	if got := testutil.ToFloat64(metrics.LinkListFailure); got != 0 {
-		t.Fatalf("unexpected LinkListFailure metric: got %v want 0", got)
-	}
+			if got := testutil.ToFloat64(metrics.LinkListFailure); got != 0 {
+				t.Fatalf("unexpected LinkListFailure metric: got %v want 0", got)
+			}
 
-	var resp listLinksResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("failed to decode response: %v", err)
-	}
+			var resp listLinksResponse
+			if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+				t.Fatalf("failed to decode response: %v", err)
+			}
 
-	if resp.TotalCount != 1 {
-		t.Fatalf("expected total count 1, got %d", resp.TotalCount)
-	}
-	if len(resp.Items) != 1 {
-		t.Fatalf("expected 1 item, got %d", len(resp.Items))
-	}
-	if !strings.Contains(resp.Items[0].URL, slug) {
-		t.Fatalf("expected response URL to contain slug %q, got %q", slug, resp.Items[0].URL)
+			if resp.TotalCount != 1 {
+				t.Fatalf("expected total count 1, got %d", resp.TotalCount)
+			}
+			if len(resp.Items) != 1 {
+				t.Fatalf("expected 1 item, got %d", len(resp.Items))
+			}
+			if !strings.Contains(resp.Items[0].URL, slug) {
+				t.Fatalf("expected response URL to contain slug %q, got %q", slug, resp.Items[0].URL)
+			}
+		})
 	}
 }
 
