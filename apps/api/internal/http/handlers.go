@@ -37,7 +37,9 @@ import (
 type queryProvider interface {
 	CreateLink(context.Context, db.CreateLinkParams) (db.CreateLinkRow, error)
 	ListLinks(context.Context, db.ListLinksParams) ([]db.ListLinksRow, error)
+	ListLinksWithTags(context.Context, db.ListLinksWithTagsParams) ([]db.ListLinksWithTagsRow, error)
 	CountLinks(context.Context, db.CountLinksParams) (int64, error)
+	CountLinksWithTags(context.Context, db.CountLinksWithTagsParams) (int64, error)
 	UpdateLinkFavorite(context.Context, db.UpdateLinkFavoriteParams) (db.UpdateLinkFavoriteRow, error)
 	ListRecommendationsForUser(context.Context, db.ListRecommendationsForUserParams) ([]db.ListRecommendationsForUserRow, error)
 	CreateClaim(context.Context, db.CreateClaimParams) (db.CreateClaimRow, error)
@@ -572,7 +574,6 @@ func (s *Server) handleListLinks(c echo.Context) error {
 		Favorite:       favoriteFilter,
 		Query:          queryFilter,
 		EnableFullText: true,
-		TagIds:         tagIDs,
 		PageLimit:      int32(limit),
 		PageOffset:     int32(offset),
 	}
@@ -582,92 +583,201 @@ func (s *Server) handleListLinks(c echo.Context) error {
 		Favorite:       favoriteFilter,
 		Query:          queryFilter,
 		EnableFullText: true,
-		TagIds:         tagIDs,
 	}
 
-	items, err := s.queries.ListLinks(ctx, listParams)
-	if err != nil {
-		if listParams.EnableFullText && isFullTextParseError(err) {
-			c.Logger().Warnf(
-				"list links: full-text parse error for query %q, retrying with partial search: %v",
-				queryText, err,
-			)
-			listParams.EnableFullText = false
-			countParams.EnableFullText = false
-			items, err = s.queries.ListLinks(ctx, listParams)
-		}
+	var (
+		linkRows []db.ListLinksRow
+		count    int64
+	)
 
+	if len(tagIDs) == 0 {
+		items, err := s.queries.ListLinks(ctx, listParams)
 		if err != nil {
-			s.metrics.LinkListFailure.Inc()
-
-			var pgErr *pgconn.PgError
-			migrationMessage := ""
-			migrationGap := false
-			if errors.As(err, &pgErr) {
-				migrationMessage, migrationGap = classifyReadinessError(err)
+			if listParams.EnableFullText && isFullTextParseError(err) {
+				c.Logger().Warnf(
+					"list links: full-text parse error for query %q, retrying with partial search: %v",
+					queryText, err,
+				)
+				listParams.EnableFullText = false
+				countParams.EnableFullText = false
+				items, err = s.queries.ListLinks(ctx, listParams)
 			}
 
-			logTemplate := "list links: queries.ListLinks failed (limit=%d offset=%d favorite=%s query=%q tags=%q tagIDs=%v enableFullText=%t): %v"
-			logArgs := []any{limit, offset, favoriteLogValue, queryText, tagsParam, tagIDs, listParams.EnableFullText, err}
-			if migrationGap {
-				logTemplate += " (classification=%s)"
-				logArgs = append(logArgs, migrationMessage)
-			}
-			c.Logger().Errorf(logTemplate, logArgs...)
+			if err != nil {
+				s.metrics.LinkListFailure.Inc()
 
-			if migrationGap {
-				return c.JSON(stdhttp.StatusServiceUnavailable, map[string]string{
-					"error": migrationMessage,
-					"hint":  "apply outstanding database migrations",
-				})
-			}
+				var pgErr *pgconn.PgError
+				migrationMessage := ""
+				migrationGap := false
+				if errors.As(err, &pgErr) {
+					migrationMessage, migrationGap = classifyReadinessError(err)
+				}
 
-			return c.JSON(stdhttp.StatusInternalServerError, map[string]string{"error": "failed to fetch links"})
+				logTemplate := "list links: queries.ListLinks failed (limit=%d offset=%d favorite=%s query=%q tags=%q tagIDs=%v enableFullText=%t): %v"
+				logArgs := []any{limit, offset, favoriteLogValue, queryText, tagsParam, tagIDs, listParams.EnableFullText, err}
+				if migrationGap {
+					logTemplate += " (classification=%s)"
+					logArgs = append(logArgs, migrationMessage)
+				}
+				c.Logger().Errorf(logTemplate, logArgs...)
+
+				if migrationGap {
+					return c.JSON(stdhttp.StatusServiceUnavailable, map[string]string{
+						"error": migrationMessage,
+						"hint":  "apply outstanding database migrations",
+					})
+				}
+
+				return c.JSON(stdhttp.StatusInternalServerError, map[string]string{"error": "failed to fetch links"})
+			}
 		}
-	}
 
-	count, err := s.queries.CountLinks(ctx, countParams)
-	if err != nil {
-		if countParams.EnableFullText && isFullTextParseError(err) {
-			c.Logger().Warnf(
-				"list links: full-text parse error when counting query %q, retrying with partial search: %v",
-				queryText, err,
-			)
-			countParams.EnableFullText = false
-			count, err = s.queries.CountLinks(ctx, countParams)
-		}
+		linkRows = items
 
+		count, err = s.queries.CountLinks(ctx, countParams)
 		if err != nil {
-			s.metrics.LinkListFailure.Inc()
-
-			var pgErr *pgconn.PgError
-			migrationMessage := ""
-			migrationGap := false
-			if errors.As(err, &pgErr) {
-				migrationMessage, migrationGap = classifyReadinessError(err)
+			if countParams.EnableFullText && isFullTextParseError(err) {
+				c.Logger().Warnf(
+					"list links: full-text parse error when counting query %q, retrying with partial search: %v",
+					queryText, err,
+				)
+				countParams.EnableFullText = false
+				count, err = s.queries.CountLinks(ctx, countParams)
 			}
 
-			logTemplate := "list links: queries.CountLinks failed (limit=%d offset=%d favorite=%s query=%q tags=%q tagIDs=%v enableFullText=%t): %v"
-			logArgs := []any{limit, offset, favoriteLogValue, queryText, tagsParam, tagIDs, countParams.EnableFullText, err}
-			if migrationGap {
-				logTemplate += " (classification=%s)"
-				logArgs = append(logArgs, migrationMessage)
-			}
-			c.Logger().Errorf(logTemplate, logArgs...)
+			if err != nil {
+				s.metrics.LinkListFailure.Inc()
 
-			if migrationGap {
-				return c.JSON(stdhttp.StatusServiceUnavailable, map[string]string{
-					"error": migrationMessage,
-					"hint":  "apply outstanding database migrations",
-				})
+				var pgErr *pgconn.PgError
+				migrationMessage := ""
+				migrationGap := false
+				if errors.As(err, &pgErr) {
+					migrationMessage, migrationGap = classifyReadinessError(err)
+				}
+
+				logTemplate := "list links: queries.CountLinks failed (limit=%d offset=%d favorite=%s query=%q tags=%q tagIDs=%v enableFullText=%t): %v"
+				logArgs := []any{limit, offset, favoriteLogValue, queryText, tagsParam, tagIDs, countParams.EnableFullText, err}
+				if migrationGap {
+					logTemplate += " (classification=%s)"
+					logArgs = append(logArgs, migrationMessage)
+				}
+				c.Logger().Errorf(logTemplate, logArgs...)
+
+				if migrationGap {
+					return c.JSON(stdhttp.StatusServiceUnavailable, map[string]string{
+						"error": migrationMessage,
+						"hint":  "apply outstanding database migrations",
+					})
+				}
+
+				return c.JSON(stdhttp.StatusInternalServerError, map[string]string{"error": "failed to count links"})
+			}
+		}
+	} else {
+		listWithTagsParams := db.ListLinksWithTagsParams{
+			TagIds:         tagIDs,
+			UserID:         uuidToPg(s.cfg.DevUserID),
+			Favorite:       favoriteFilter,
+			Query:          queryFilter,
+			EnableFullText: true,
+			PageOffset:     int32(offset),
+			PageLimit:      int32(limit),
+		}
+
+		countWithTagsParams := db.CountLinksWithTagsParams{
+			TagIds:         tagIDs,
+			UserID:         uuidToPg(s.cfg.DevUserID),
+			Favorite:       favoriteFilter,
+			Query:          queryFilter,
+			EnableFullText: true,
+		}
+
+		items, err := s.queries.ListLinksWithTags(ctx, listWithTagsParams)
+		if err != nil {
+			if listWithTagsParams.EnableFullText && isFullTextParseError(err) {
+				c.Logger().Warnf(
+					"list links: full-text parse error for query %q with tag filters, retrying with partial search: %v",
+					queryText, err,
+				)
+				listWithTagsParams.EnableFullText = false
+				countWithTagsParams.EnableFullText = false
+				items, err = s.queries.ListLinksWithTags(ctx, listWithTagsParams)
 			}
 
-			return c.JSON(stdhttp.StatusInternalServerError, map[string]string{"error": "failed to count links"})
+			if err != nil {
+				s.metrics.LinkListFailure.Inc()
+
+				var pgErr *pgconn.PgError
+				migrationMessage := ""
+				migrationGap := false
+				if errors.As(err, &pgErr) {
+					migrationMessage, migrationGap = classifyReadinessError(err)
+				}
+
+				logTemplate := "list links: queries.ListLinksWithTags failed (limit=%d offset=%d favorite=%s query=%q tags=%q tagIDs=%v enableFullText=%t): %v"
+				logArgs := []any{limit, offset, favoriteLogValue, queryText, tagsParam, tagIDs, listWithTagsParams.EnableFullText, err}
+				if migrationGap {
+					logTemplate += " (classification=%s)"
+					logArgs = append(logArgs, migrationMessage)
+				}
+				c.Logger().Errorf(logTemplate, logArgs...)
+
+				if migrationGap {
+					return c.JSON(stdhttp.StatusServiceUnavailable, map[string]string{
+						"error": migrationMessage,
+						"hint":  "apply outstanding database migrations",
+					})
+				}
+
+				return c.JSON(stdhttp.StatusInternalServerError, map[string]string{"error": "failed to fetch links"})
+			}
+		}
+
+		linkRows = convertListLinksWithTagsRows(items)
+
+		count, err = s.queries.CountLinksWithTags(ctx, countWithTagsParams)
+		if err != nil {
+			if countWithTagsParams.EnableFullText && isFullTextParseError(err) {
+				c.Logger().Warnf(
+					"list links: full-text parse error when counting query %q with tag filters, retrying with partial search: %v",
+					queryText, err,
+				)
+				countWithTagsParams.EnableFullText = false
+				count, err = s.queries.CountLinksWithTags(ctx, countWithTagsParams)
+			}
+
+			if err != nil {
+				s.metrics.LinkListFailure.Inc()
+
+				var pgErr *pgconn.PgError
+				migrationMessage := ""
+				migrationGap := false
+				if errors.As(err, &pgErr) {
+					migrationMessage, migrationGap = classifyReadinessError(err)
+				}
+
+				logTemplate := "list links: queries.CountLinksWithTags failed (limit=%d offset=%d favorite=%s query=%q tags=%q tagIDs=%v enableFullText=%t): %v"
+				logArgs := []any{limit, offset, favoriteLogValue, queryText, tagsParam, tagIDs, countWithTagsParams.EnableFullText, err}
+				if migrationGap {
+					logTemplate += " (classification=%s)"
+					logArgs = append(logArgs, migrationMessage)
+				}
+				c.Logger().Errorf(logTemplate, logArgs...)
+
+				if migrationGap {
+					return c.JSON(stdhttp.StatusServiceUnavailable, map[string]string{
+						"error": migrationMessage,
+						"hint":  "apply outstanding database migrations",
+					})
+				}
+
+				return c.JSON(stdhttp.StatusInternalServerError, map[string]string{"error": "failed to count links"})
+			}
 		}
 	}
 
-	responses := make([]linkResponse, 0, len(items))
-	for _, item := range items {
+	responses := make([]linkResponse, 0, len(linkRows))
+	for _, item := range linkRows {
 		resp, err := toLinkResponse(item)
 		if err != nil {
 			s.metrics.LinkListFailure.Inc()
@@ -1250,6 +1360,31 @@ func (s *Server) handleDeleteHighlight(c echo.Context) error {
 
 	s.metrics.HighlightDeleteSuccess.Inc()
 	return c.NoContent(stdhttp.StatusNoContent)
+}
+
+func convertListLinksWithTagsRows(rows []db.ListLinksWithTagsRow) []db.ListLinksRow {
+	converted := make([]db.ListLinksRow, 0, len(rows))
+	for _, row := range rows {
+		converted = append(converted, db.ListLinksRow{
+			ID:            row.ID,
+			UserID:        row.UserID,
+			Url:           row.Url,
+			Title:         row.Title,
+			SourceDomain:  row.SourceDomain,
+			CreatedAt:     row.CreatedAt,
+			ReadAt:        row.ReadAt,
+			Favorite:      row.Favorite,
+			ArchiveTitle:  row.ArchiveTitle,
+			ArchiveByline: row.ArchiveByline,
+			Lang:          row.Lang,
+			WordCount:     row.WordCount,
+			ExtractedText: row.ExtractedText,
+			TagIds:        row.TagIds,
+			TagNames:      row.TagNames,
+			Highlights:    row.Highlights,
+		})
+	}
+	return converted
 }
 
 func toLinkResponse(row db.ListLinksRow) (linkResponse, error) {

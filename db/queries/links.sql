@@ -56,8 +56,8 @@ LEFT JOIN LATERAL (
                json_build_object(
                    'id', h.id,
                    'link_id', h.link_id,
-                  'text', h.quote,
-                  'note', h.annotation,
+                   'text', h.quote,
+                   'note', h.annotation,
                    'created_at', h.created_at,
                    'updated_at', h.updated_at
                )
@@ -78,23 +78,79 @@ WHERE l.user_id = sqlc.arg('user_id')
     END
     OR l.url ILIKE '%' || sqlc.narg('query')::text || '%'
   )
-  AND (
-    sqlc.narg('tag_ids')::int4[] IS NULL
-    OR NOT EXISTS (
-        SELECT 1
-        FROM unnest(sqlc.narg('tag_ids')::int4[]) AS tag_id
-        WHERE NOT EXISTS (
-            SELECT 1
-            FROM link_tags lt
-            WHERE lt.link_id = l.id
-              AND lt.tag_id = tag_id
-        )
-    )
-  )
 ORDER BY l.created_at DESC
 LIMIT sqlc.arg('page_limit')
 OFFSET sqlc.arg('page_offset');
 
+-- name: ListLinksWithTags :many
+SELECT l.id,
+       l.user_id,
+       l.url,
+       l.title,
+       l.source_domain,
+       l.created_at,
+       l.read_at,
+       l.favorite,
+       COALESCE(a.title, '') AS archive_title,
+       COALESCE(a.byline, '') AS archive_byline,
+       COALESCE(a.lang, '') AS lang,
+       COALESCE(a.word_count, 0) AS word_count,
+       COALESCE(a.extracted_text, '') AS extracted_text,
+       COALESCE(tag_data.tag_ids, '{}'::INTEGER[]) AS tag_ids,
+       COALESCE(tag_data.tag_names, '{}'::TEXT[]) AS tag_names,
+       COALESCE(highlight_data.highlights, '[]'::JSON)::text AS highlights
+FROM links l
+LEFT JOIN archives a ON a.link_id = l.id
+LEFT JOIN LATERAL (
+    SELECT ARRAY_AGG(t.id ORDER BY t.name) AS tag_ids,
+           ARRAY_AGG(t.name ORDER BY t.name) AS tag_names
+    FROM link_tags lt
+    JOIN tags t ON t.id = lt.tag_id
+    WHERE lt.link_id = l.id
+) AS tag_data ON TRUE
+LEFT JOIN LATERAL (
+    SELECT json_agg(
+               json_build_object(
+                   'id', h.id,
+                   'link_id', h.link_id,
+                   'text', h.quote,
+                   'note', h.annotation,
+                   'created_at', h.created_at,
+                   'updated_at', h.updated_at
+               )
+               ORDER BY h.created_at DESC
+           ) AS highlights
+    FROM highlights h
+    WHERE h.link_id = l.id
+) AS highlight_data ON TRUE
+CROSS JOIN LATERAL (
+    SELECT sqlc.arg('tag_ids')::int4[] AS tag_ids
+) AS filter_params
+WHERE l.user_id = sqlc.arg('user_id')
+  AND (
+    COALESCE(sqlc.narg('favorite')::boolean, l.favorite) = l.favorite
+  )
+  AND (
+    sqlc.narg('query')::text IS NULL
+    OR CASE
+        WHEN sqlc.arg('enable_full_text')::boolean THEN l.search_tsv @@ plainto_tsquery('english', sqlc.narg('query')::text)
+        ELSE FALSE
+    END
+    OR l.url ILIKE '%' || sqlc.narg('query')::text || '%'
+  )
+  AND NOT EXISTS (
+    SELECT 1
+    FROM unnest(filter_params.tag_ids) AS tag_id
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM link_tags lt
+        WHERE lt.link_id = l.id
+          AND lt.tag_id = tag_id
+    )
+  )
+ORDER BY l.created_at DESC
+  LIMIT sqlc.arg('page_limit')
+  OFFSET sqlc.arg('page_offset');
 -- name: CountLinks :one
 SELECT COUNT(*)
 FROM links l
@@ -109,18 +165,34 @@ WHERE l.user_id = sqlc.arg('user_id')
         ELSE FALSE
     END
     OR l.url ILIKE '%' || sqlc.narg('query')::text || '%'
+  );
+
+-- name: CountLinksWithTags :one
+SELECT COUNT(*)
+FROM links l
+CROSS JOIN LATERAL (
+    SELECT sqlc.arg('tag_ids')::int4[] AS tag_ids
+) AS filter_params
+WHERE l.user_id = sqlc.arg('user_id')
+  AND (
+    COALESCE(sqlc.narg('favorite')::boolean, l.favorite) = l.favorite
   )
   AND (
-    sqlc.narg('tag_ids')::int4[] IS NULL
-    OR NOT EXISTS (
+    sqlc.narg('query')::text IS NULL
+    OR CASE
+        WHEN sqlc.arg('enable_full_text')::boolean THEN l.search_tsv @@ plainto_tsquery('english', sqlc.narg('query')::text)
+        ELSE FALSE
+    END
+    OR l.url ILIKE '%' || sqlc.narg('query')::text || '%'
+  )
+  AND NOT EXISTS (
+    SELECT 1
+    FROM unnest(filter_params.tag_ids) AS tag_id
+    WHERE NOT EXISTS (
         SELECT 1
-        FROM unnest(sqlc.narg('tag_ids')::int4[]) AS tag_id
-        WHERE NOT EXISTS (
-            SELECT 1
-            FROM link_tags lt
-            WHERE lt.link_id = l.id
-              AND lt.tag_id = tag_id
-        )
+        FROM link_tags lt
+        WHERE lt.link_id = l.id
+          AND lt.tag_id = tag_id
     )
   );
 

@@ -42,19 +42,6 @@ WHERE l.user_id = $1
     END
     OR l.url ILIKE '%' || $3::text || '%'
   )
-  AND (
-    $5::int4[] IS NULL
-    OR NOT EXISTS (
-        SELECT 1
-        FROM unnest($5::int4[]) AS tag_id
-        WHERE NOT EXISTS (
-            SELECT 1
-            FROM link_tags lt
-            WHERE lt.link_id = l.id
-              AND lt.tag_id = tag_id
-        )
-    )
-  )
 `
 
 type CountLinksParams struct {
@@ -62,7 +49,6 @@ type CountLinksParams struct {
 	Favorite       pgtype.Bool
 	Query          pgtype.Text
 	EnableFullText bool
-	TagIds         []int32
 }
 
 func (q *Queries) CountLinks(ctx context.Context, arg CountLinksParams) (int64, error) {
@@ -71,7 +57,57 @@ func (q *Queries) CountLinks(ctx context.Context, arg CountLinksParams) (int64, 
 		arg.Favorite,
 		arg.Query,
 		arg.EnableFullText,
+	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countLinksWithTags = `-- name: CountLinksWithTags :one
+SELECT COUNT(*)
+FROM links l
+CROSS JOIN LATERAL (
+    SELECT $1::int4[] AS tag_ids
+) AS filter_params
+WHERE l.user_id = $2
+  AND (
+    COALESCE($3::boolean, l.favorite) = l.favorite
+  )
+  AND (
+    $4::text IS NULL
+    OR CASE
+        WHEN $5::boolean THEN l.search_tsv @@ plainto_tsquery('english', $4::text)
+        ELSE FALSE
+    END
+    OR l.url ILIKE '%' || $4::text || '%'
+  )
+  AND NOT EXISTS (
+    SELECT 1
+    FROM unnest(filter_params.tag_ids) AS tag_id
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM link_tags lt
+        WHERE lt.link_id = l.id
+          AND lt.tag_id = tag_id
+    )
+  )
+`
+
+type CountLinksWithTagsParams struct {
+	TagIds         []int32
+	UserID         pgtype.UUID
+	Favorite       pgtype.Bool
+	Query          pgtype.Text
+	EnableFullText bool
+}
+
+func (q *Queries) CountLinksWithTags(ctx context.Context, arg CountLinksWithTagsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countLinksWithTags,
 		arg.TagIds,
+		arg.UserID,
+		arg.Favorite,
+		arg.Query,
+		arg.EnableFullText,
 	)
 	var count int64
 	err := row.Scan(&count)
@@ -337,8 +373,8 @@ LEFT JOIN LATERAL (
                json_build_object(
                    'id', h.id,
                    'link_id', h.link_id,
-                  'text', h.quote,
-                  'note', h.annotation,
+                   'text', h.quote,
+                   'note', h.annotation,
                    'created_at', h.created_at,
                    'updated_at', h.updated_at
                )
@@ -359,22 +395,9 @@ WHERE l.user_id = $1
     END
     OR l.url ILIKE '%' || $3::text || '%'
   )
-  AND (
-    $5::int4[] IS NULL
-    OR NOT EXISTS (
-        SELECT 1
-        FROM unnest($5::int4[]) AS tag_id
-        WHERE NOT EXISTS (
-            SELECT 1
-            FROM link_tags lt
-            WHERE lt.link_id = l.id
-              AND lt.tag_id = tag_id
-        )
-    )
-  )
 ORDER BY l.created_at DESC
-LIMIT $7
-OFFSET $6
+LIMIT $6
+OFFSET $5
 `
 
 type ListLinksParams struct {
@@ -382,7 +405,6 @@ type ListLinksParams struct {
 	Favorite       pgtype.Bool
 	Query          pgtype.Text
 	EnableFullText bool
-	TagIds         []int32
 	PageOffset     int32
 	PageLimit      int32
 }
@@ -412,7 +434,6 @@ func (q *Queries) ListLinks(ctx context.Context, arg ListLinksParams) ([]ListLin
 		arg.Favorite,
 		arg.Query,
 		arg.EnableFullText,
-		arg.TagIds,
 		arg.PageOffset,
 		arg.PageLimit,
 	)
@@ -423,6 +444,151 @@ func (q *Queries) ListLinks(ctx context.Context, arg ListLinksParams) ([]ListLin
 	var items []ListLinksRow
 	for rows.Next() {
 		var i ListLinksRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Url,
+			&i.Title,
+			&i.SourceDomain,
+			&i.CreatedAt,
+			&i.ReadAt,
+			&i.Favorite,
+			&i.ArchiveTitle,
+			&i.ArchiveByline,
+			&i.Lang,
+			&i.WordCount,
+			&i.ExtractedText,
+			&i.TagIds,
+			&i.TagNames,
+			&i.Highlights,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLinksWithTags = `-- name: ListLinksWithTags :many
+SELECT l.id,
+       l.user_id,
+       l.url,
+       l.title,
+       l.source_domain,
+       l.created_at,
+       l.read_at,
+       l.favorite,
+       COALESCE(a.title, '') AS archive_title,
+       COALESCE(a.byline, '') AS archive_byline,
+       COALESCE(a.lang, '') AS lang,
+       COALESCE(a.word_count, 0) AS word_count,
+       COALESCE(a.extracted_text, '') AS extracted_text,
+       COALESCE(tag_data.tag_ids, '{}'::INTEGER[]) AS tag_ids,
+       COALESCE(tag_data.tag_names, '{}'::TEXT[]) AS tag_names,
+       COALESCE(highlight_data.highlights, '[]'::JSON)::text AS highlights
+FROM links l
+LEFT JOIN archives a ON a.link_id = l.id
+LEFT JOIN LATERAL (
+    SELECT ARRAY_AGG(t.id ORDER BY t.name) AS tag_ids,
+           ARRAY_AGG(t.name ORDER BY t.name) AS tag_names
+    FROM link_tags lt
+    JOIN tags t ON t.id = lt.tag_id
+    WHERE lt.link_id = l.id
+) AS tag_data ON TRUE
+LEFT JOIN LATERAL (
+    SELECT json_agg(
+               json_build_object(
+                   'id', h.id,
+                   'link_id', h.link_id,
+                   'text', h.quote,
+                   'note', h.annotation,
+                   'created_at', h.created_at,
+                   'updated_at', h.updated_at
+               )
+               ORDER BY h.created_at DESC
+           ) AS highlights
+    FROM highlights h
+    WHERE h.link_id = l.id
+) AS highlight_data ON TRUE
+CROSS JOIN LATERAL (
+    SELECT $1::int4[] AS tag_ids
+) AS filter_params
+WHERE l.user_id = $2
+  AND (
+    COALESCE($3::boolean, l.favorite) = l.favorite
+  )
+  AND (
+    $4::text IS NULL
+    OR CASE
+        WHEN $5::boolean THEN l.search_tsv @@ plainto_tsquery('english', $4::text)
+        ELSE FALSE
+    END
+    OR l.url ILIKE '%' || $4::text || '%'
+  )
+  AND NOT EXISTS (
+    SELECT 1
+    FROM unnest(filter_params.tag_ids) AS tag_id
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM link_tags lt
+        WHERE lt.link_id = l.id
+          AND lt.tag_id = tag_id
+    )
+  )
+ORDER BY l.created_at DESC
+  LIMIT $7
+  OFFSET $6
+`
+
+type ListLinksWithTagsParams struct {
+	TagIds         []int32
+	UserID         pgtype.UUID
+	Favorite       pgtype.Bool
+	Query          pgtype.Text
+	EnableFullText bool
+	PageOffset     int32
+	PageLimit      int32
+}
+
+type ListLinksWithTagsRow struct {
+	ID            pgtype.UUID
+	UserID        pgtype.UUID
+	Url           string
+	Title         pgtype.Text
+	SourceDomain  pgtype.Text
+	CreatedAt     pgtype.Timestamptz
+	ReadAt        pgtype.Timestamptz
+	Favorite      bool
+	ArchiveTitle  string
+	ArchiveByline string
+	Lang          string
+	WordCount     int32
+	ExtractedText string
+	TagIds        interface{}
+	TagNames      interface{}
+	Highlights    string
+}
+
+func (q *Queries) ListLinksWithTags(ctx context.Context, arg ListLinksWithTagsParams) ([]ListLinksWithTagsRow, error) {
+	rows, err := q.db.Query(ctx, listLinksWithTags,
+		arg.TagIds,
+		arg.UserID,
+		arg.Favorite,
+		arg.Query,
+		arg.EnableFullText,
+		arg.PageOffset,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListLinksWithTagsRow
+	for rows.Next() {
+		var i ListLinksWithTagsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,
