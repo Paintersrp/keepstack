@@ -81,9 +81,9 @@ WHERE l.user_id = sqlc.arg('user_id')
     END
     OR l.url ILIKE '%' || sqlc.narg('query')::text || '%'
   )
+  AND sqlc.arg('page_limit') = sqlc.arg('page_limit')
 ORDER BY l.created_at DESC
-LIMIT sqlc.arg('page_limit')
-OFFSET sqlc.arg('page_offset');
+LIMIT sqlc.arg('page_limit') OFFSET sqlc.arg('page_offset');
 
 -- name: ListLinksWithTags :many
 SELECT l.id,
@@ -151,9 +151,9 @@ WHERE l.user_id = sqlc.arg('user_id')
           AND lt.tag_id = tag_id
     )
   )
+  AND sqlc.arg('page_limit') = sqlc.arg('page_limit')
 ORDER BY l.created_at DESC
-  LIMIT sqlc.arg('page_limit')
-  OFFSET sqlc.arg('page_offset');
+LIMIT sqlc.arg('page_limit') OFFSET sqlc.arg('page_offset');
 -- name: CountLinks :one
 SELECT COUNT(*)
 FROM links l
