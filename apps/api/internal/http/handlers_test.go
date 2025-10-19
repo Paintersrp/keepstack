@@ -150,6 +150,8 @@ func TestHandleListLinksNoTagsParam(t *testing.T) {
 
 	var capturedListTagIDs []int32
 	var capturedCountTagIDs []int32
+	var listCalled bool
+	var countCalled bool
 
 	queries := &mockQueries{
 		listLinksFn: func(ctx context.Context, params db.ListLinksParams) ([]db.ListLinksRow, error) {
@@ -157,6 +159,7 @@ func TestHandleListLinksNoTagsParam(t *testing.T) {
 				t.Fatalf("expected list tag IDs to be nil, got %v", params.TagIds)
 			}
 			capturedListTagIDs = params.TagIds
+			listCalled = true
 			return []db.ListLinksRow{}, nil
 		},
 		countLinksFn: func(ctx context.Context, params db.CountLinksParams) (int64, error) {
@@ -164,6 +167,7 @@ func TestHandleListLinksNoTagsParam(t *testing.T) {
 				t.Fatalf("expected count tag IDs to be nil, got %v", params.TagIds)
 			}
 			capturedCountTagIDs = params.TagIds
+			countCalled = true
 			return 0, nil
 		},
 	}
@@ -187,6 +191,12 @@ func TestHandleListLinksNoTagsParam(t *testing.T) {
 	}
 	if capturedCountTagIDs != nil {
 		t.Fatalf("expected count tag IDs to remain nil, got %v", capturedCountTagIDs)
+	}
+	if !listCalled {
+		t.Fatalf("expected list query to be called")
+	}
+	if !countCalled {
+		t.Fatalf("expected count query to be called")
 	}
 }
 

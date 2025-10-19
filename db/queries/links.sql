@@ -66,6 +66,9 @@ LEFT JOIN LATERAL (
     FROM highlights h
     WHERE h.link_id = l.id
 ) AS highlight_data ON TRUE
+CROSS JOIN LATERAL (
+    SELECT sqlc.narg('tag_ids')::int4[] AS tag_ids
+) AS filter_params
 WHERE l.user_id = sqlc.arg('user_id')
   AND (
     COALESCE(sqlc.narg('favorite')::boolean, l.favorite) = l.favorite
@@ -79,10 +82,10 @@ WHERE l.user_id = sqlc.arg('user_id')
     OR l.url ILIKE '%' || sqlc.narg('query')::text || '%'
   )
   AND (
-    sqlc.narg('tag_ids')::int4[] IS NULL
+    filter_params.tag_ids IS NULL
     OR NOT EXISTS (
         SELECT 1
-        FROM unnest(sqlc.narg('tag_ids')::int4[]) AS tag_id
+        FROM unnest(filter_params.tag_ids) AS tag_id
         WHERE NOT EXISTS (
             SELECT 1
             FROM link_tags lt
@@ -98,6 +101,9 @@ OFFSET sqlc.arg('page_offset');
 -- name: CountLinks :one
 SELECT COUNT(*)
 FROM links l
+CROSS JOIN LATERAL (
+    SELECT sqlc.narg('tag_ids')::int4[] AS tag_ids
+) AS filter_params
 WHERE l.user_id = sqlc.arg('user_id')
   AND (
     COALESCE(sqlc.narg('favorite')::boolean, l.favorite) = l.favorite
@@ -111,10 +117,10 @@ WHERE l.user_id = sqlc.arg('user_id')
     OR l.url ILIKE '%' || sqlc.narg('query')::text || '%'
   )
   AND (
-    sqlc.narg('tag_ids')::int4[] IS NULL
+    filter_params.tag_ids IS NULL
     OR NOT EXISTS (
         SELECT 1
-        FROM unnest(sqlc.narg('tag_ids')::int4[]) AS tag_id
+        FROM unnest(filter_params.tag_ids) AS tag_id
         WHERE NOT EXISTS (
             SELECT 1
             FROM link_tags lt
