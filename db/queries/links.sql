@@ -66,6 +66,9 @@ LEFT JOIN LATERAL (
     FROM highlights h
     WHERE h.link_id = l.id
 ) AS highlight_data ON TRUE
+CROSS JOIN LATERAL (
+    SELECT sqlc.narg('tag_ids')::int4[] AS tag_ids
+) AS filter_params
 WHERE l.user_id = sqlc.arg('user_id')
   AND (
     COALESCE(sqlc.narg('favorite')::boolean, l.favorite) = l.favorite
@@ -154,6 +157,9 @@ ORDER BY l.created_at DESC
 -- name: CountLinks :one
 SELECT COUNT(*)
 FROM links l
+CROSS JOIN LATERAL (
+    SELECT sqlc.narg('tag_ids')::int4[] AS tag_ids
+) AS filter_params
 WHERE l.user_id = sqlc.arg('user_id')
   AND (
     COALESCE(sqlc.narg('favorite')::boolean, l.favorite) = l.favorite

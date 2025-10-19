@@ -15,6 +15,10 @@ log_info() {
   log "INFO" "$@"
 }
 
+log_info_err() {
+  log_info "$@" >&2
+}
+
 log_error() {
   log "ERROR" "$@"
 }
@@ -160,7 +164,7 @@ ensure_tag() {
     exit 1
   fi
 
-  log_info "Tag ensured" "name=${name}" "status=${status}"
+  log_info_err "Tag ensured" "name=${name}" "status=${status}"
 
   local id
   if [[ "$status" == "201" ]]; then

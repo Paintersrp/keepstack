@@ -30,21 +30,25 @@ func (q *Queries) AddTagToLink(ctx context.Context, arg AddTagToLinkParams) erro
 const countLinks = `-- name: CountLinks :one
 SELECT COUNT(*)
 FROM links l
-WHERE l.user_id = $1
+CROSS JOIN LATERAL (
+    SELECT $1::int4[] AS tag_ids
+) AS filter_params
+WHERE l.user_id = $2
   AND (
-    COALESCE($2::boolean, l.favorite) = l.favorite
+    COALESCE($3::boolean, l.favorite) = l.favorite
   )
   AND (
-    $3::text IS NULL
+    $4::text IS NULL
     OR CASE
-        WHEN $4::boolean THEN l.search_tsv @@ plainto_tsquery('english', $3::text)
+        WHEN $5::boolean THEN l.search_tsv @@ plainto_tsquery('english', $4::text)
         ELSE FALSE
     END
-    OR l.url ILIKE '%' || $3::text || '%'
+    OR l.url ILIKE '%' || $4::text || '%'
   )
 `
 
 type CountLinksParams struct {
+	TagIds         []int32
 	UserID         pgtype.UUID
 	Favorite       pgtype.Bool
 	Query          pgtype.Text
@@ -53,6 +57,7 @@ type CountLinksParams struct {
 
 func (q *Queries) CountLinks(ctx context.Context, arg CountLinksParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countLinks,
+		arg.TagIds,
 		arg.UserID,
 		arg.Favorite,
 		arg.Query,
@@ -383,17 +388,20 @@ LEFT JOIN LATERAL (
     FROM highlights h
     WHERE h.link_id = l.id
 ) AS highlight_data ON TRUE
-WHERE l.user_id = $1
+CROSS JOIN LATERAL (
+    SELECT $1::int4[] AS tag_ids
+) AS filter_params
+WHERE l.user_id = $2
   AND (
-    COALESCE($2::boolean, l.favorite) = l.favorite
+    COALESCE($3::boolean, l.favorite) = l.favorite
   )
   AND (
-    $3::text IS NULL
+    $4::text IS NULL
     OR CASE
-        WHEN $4::boolean THEN l.search_tsv @@ plainto_tsquery('english', $3::text)
+        WHEN $5::boolean THEN l.search_tsv @@ plainto_tsquery('english', $4::text)
         ELSE FALSE
     END
-    OR l.url ILIKE '%' || $3::text || '%'
+    OR l.url ILIKE '%' || $4::text || '%'
   )
 ORDER BY l.created_at DESC
 LIMIT $6
@@ -401,6 +409,7 @@ OFFSET $5
 `
 
 type ListLinksParams struct {
+	TagIds         []int32
 	UserID         pgtype.UUID
 	Favorite       pgtype.Bool
 	Query          pgtype.Text
@@ -430,6 +439,7 @@ type ListLinksRow struct {
 
 func (q *Queries) ListLinks(ctx context.Context, arg ListLinksParams) ([]ListLinksRow, error) {
 	rows, err := q.db.Query(ctx, listLinks,
+		arg.TagIds,
 		arg.UserID,
 		arg.Favorite,
 		arg.Query,
