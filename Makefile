@@ -13,7 +13,7 @@ CLUSTER ?= keepstack
 PROMETHEUS_RELEASE ?= kube-prom-stack
 
 .PHONY: help d dev-up dev-down build push helm-dev logs seed bootstrap-dev dash-grafana smoke smoke-fast digest-once backup-now \
-        resurfacer-now verify-obs verify-alerts restore-drill rollout-observe verify-schema test build-local _smoke-run
+	resurfacer-now verify-obs verify-alerts restore-drill rollout-observe verify-schema test build-local _smoke-run
 
 help:
 	@grep -E '^[a-zA-Z0-9_-]+:([^=]|$$)' $(MAKEFILE_LIST) | cut -d':' -f1 | sort | uniq
@@ -79,31 +79,31 @@ helm-dev:
 	        echo "Collecting diagnostics..."; \
 	        kubectl -n "$${namespace}" get pods || true; \
 	        kubectl -n "$${namespace}" get jobs || true; \
-                for job in "$${migrate_job}" "$${verify_job}"; do \
-                        kubectl -n "$${namespace}" describe job "$${job}" || true; \
-                        kubectl -n "$${namespace}" logs job/"$${job}" || true; \
-                        pods="$$(kubectl -n "$${namespace}" get pods -l job-name="$${job}" -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' || true)"; \
-                        for pod in $$pods; do \
-                                containers="$$(kubectl -n "$${namespace}" get pod "$$pod" -o jsonpath='{range .spec.initContainers[*]}{.name}{"\n"}{end}{range .spec.containers[*]}{.name}{"\n"}{end}' || true)"; \
-                                for container in $$containers; do \
-                                        echo "--- Logs for job $$job pod $$pod container $$container ---"; \
-                                        kubectl -n "$${namespace}" logs "$$pod" -c "$$container" || true; \
-                                done; \
-                        done; \
-                done; \
-                kubectl -n "$${namespace}" get events --sort-by=.metadata.creationTimestamp | tail -n 20 || true; \
-        }; \
+	        for job in "$${migrate_job}" "$${verify_job}"; do \
+	                kubectl -n "$${namespace}" describe job "$${job}" || true; \
+	                kubectl -n "$${namespace}" logs job/"$${job}" || true; \
+	                pods="$$(kubectl -n "$${namespace}" get pods -l job-name="$${job}" -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' || true)"; \
+	                for pod in $$pods; do \
+	                        containers="$$(kubectl -n "$${namespace}" get pod "$$pod" -o jsonpath='{range .spec.initContainers[*]}{.name}{"\n"}{end}{range .spec.containers[*]}{.name}{"\n"}{end}' || true)"; \
+	                        for container in $$containers; do \
+	                                echo "--- Logs for job $$job pod $$pod container $$container ---"; \
+	                                kubectl -n "$${namespace}" logs "$$pod" -c "$$container" || true; \
+	                        done; \
+	                done; \
+	        done; \
+	        kubectl -n "$${namespace}" get events --sort-by=.metadata.creationTimestamp | tail -n 20 || true; \
+	}; \
 	wait_flag="--wait"; \
 	release_exists="true"; \
 	if ! helm status "$${release}" -n "$${namespace}" >/dev/null 2>&1; then \
 	        release_exists="false"; \
 	        wait_flag=""; \
 	fi; \
-        helm_debug_flag=""; \
-        if [[ -n "${HELM_DEBUG:-}" ]]; then \
-                helm_debug_flag="--debug"; \
-        fi; \
-        if ! helm upgrade --install "$${release}" "$${chart}" -n "$${namespace}" --create-namespace -f $(DEV_VALUES) --set image.registry=$(REGISTRY_SANITIZED) --set image.tag=$(TAG) $${wait_flag} --timeout 10m $${helm_debug_flag}; then \
+	helm_debug_flag=""; \
+	if [[ -n "${HELM_DEBUG:-}" ]]; then \
+	        helm_debug_flag="--debug"; \
+	fi; \
+	if ! helm upgrade --install "$${release}" "$${chart}" -n "$${namespace}" --create-namespace -f $(DEV_VALUES) --set image.registry=$(REGISTRY_SANITIZED) --set image.tag=$(TAG) $${wait_flag} --timeout 10m $${helm_debug_flag}; then \
 	        status=$$?; \
 	        echo "Helm upgrade failed."; \
 	        collect_diagnostics; \
@@ -194,10 +194,10 @@ SMOKE_TAGS_FULL ?= digest,observability,resurfacer
 SMOKE_TAGS_FAST ?= digest
 
 smoke:
-        @SMOKE_TAGS="$(if $(strip $(SMOKE_TAGS)),$(strip $(SMOKE_TAGS)),$(SMOKE_TAGS_FULL))" $(MAKE) --no-print-directory _smoke-run
+	@SMOKE_TAGS="$(if $(strip $(SMOKE_TAGS)),$(strip $(SMOKE_TAGS)),$(SMOKE_TAGS_FULL))" $(MAKE) --no-print-directory _smoke-run
 
 smoke-fast:
-        @SMOKE_TAGS="$(if $(strip $(SMOKE_TAGS)),$(strip $(SMOKE_TAGS)),$(SMOKE_TAGS_FAST))" $(MAKE) --no-print-directory _smoke-run
+	@SMOKE_TAGS="$(if $(strip $(SMOKE_TAGS)),$(strip $(SMOKE_TAGS)),$(SMOKE_TAGS_FAST))" $(MAKE) --no-print-directory _smoke-run
 
 _smoke-run:
 	@set -euo pipefail; \
