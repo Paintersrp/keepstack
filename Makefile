@@ -171,7 +171,7 @@ bootstrap-dev:
 		if [[ "$$need_push" == "true" ]]; then \
 			steps+=("push"); \
 		fi; \
-               steps+=("helm-dev" "verify-schema" "seed"); \
+		steps+=("helm-dev" "verify-schema" "seed"); \
 		for step in "$${steps[@]}"; do \
 			echo ""; \
 			echo "==> Running $$step"; \
@@ -183,9 +183,9 @@ bootstrap-dev:
 			echo "✅ $$step completed"; \
 		done; \
 		echo ""; \
-			echo "==> Dev environment bootstrap complete"; \
-			python3 scripts/print_dev_summary.py || true
-			echo ""
+		echo "==> Dev environment bootstrap complete"; \
+		python3 scripts/print_dev_summary.py || true; \
+		echo ""
 
 dash-grafana:
 	kubectl -n monitoring port-forward svc/$(PROMETHEUS_RELEASE)-grafana 3000:80
@@ -200,28 +200,28 @@ smoke-fast:
         @SMOKE_TAGS="$(if $(strip $(SMOKE_TAGS)),$(strip $(SMOKE_TAGS)),$(SMOKE_TAGS_FAST))" $(MAKE) --no-print-directory _smoke-run
 
 _smoke-run:
-        @set -euo pipefail; \
-                scripts_dir="$(ROOT_DIR)scripts"; \
-                cleanup() { \
-                        status="$$?"; \
-                        echo "==> Tearing down Keepstack stack"; \
-                        if ! "$$scripts_dir/stack_down.sh"; then \
-                                echo "Stack teardown encountered an error" >&2; \
-                        fi; \
-                        exit "$$status"; \
-                }; \
-                trap 'cleanup' EXIT INT TERM; \
-                echo "==> Bringing Keepstack stack up"; \
-                "$$scripts_dir/stack_up.sh"; \
-                echo "==> Waiting for Keepstack stack readiness"; \
-                "$$scripts_dir/wait_ready.sh"; \
-                echo "==> Running smoke tests (SMOKE_TAGS=$${SMOKE_TAGS:-})"; \
-                go test ./test/smoke; \
-                trap - EXIT INT TERM; \
-                cleanup
+	@set -euo pipefail; \
+		scripts_dir="$(ROOT_DIR)scripts"; \
+		cleanup() { \
+			status="$$?"; \
+			echo "==> Tearing down Keepstack stack"; \
+			if ! "$$scripts_dir/stack_down.sh"; then \
+				echo "Stack teardown encountered an error" >&2; \
+			fi; \
+			exit "$$status"; \
+		}; \
+		trap 'cleanup' EXIT INT TERM; \
+		echo "==> Bringing Keepstack stack up"; \
+		"$$scripts_dir/stack_up.sh"; \
+		echo "==> Waiting for Keepstack stack readiness"; \
+		"$$scripts_dir/wait_ready.sh"; \
+		echo "==> Running smoke tests (SMOKE_TAGS=$${SMOKE_TAGS:-})"; \
+		go test ./test/smoke; \
+		trap - EXIT INT TERM; \
+		cleanup
 
 digest-once:
-        kubectl -n $(NAMESPACE) create job digest-once-$$(date +%s) --from=cronjob/keepstack-digest
+	kubectl -n $(NAMESPACE) create job digest-once-$$(date +%s) --from=cronjob/keepstack-digest
 
 backup-now:
 	$(ROOT_DIR)scripts/backup-now.sh
@@ -239,7 +239,7 @@ restore-drill:
 	$(ROOT_DIR)scripts/restore-drill.sh
 
 rollout-observe:
-        $(ROOT_DIR)scripts/rollout-observe.sh
+	$(ROOT_DIR)scripts/rollout-observe.sh
 
 verify-schema:
 	kubectl -n $(NAMESPACE) delete job $(VERIFY_JOB) --ignore-not-found
