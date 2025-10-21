@@ -1,0 +1,140 @@
+name: Smoke
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  smoke:
+    name: Smoke (${{ matrix.env }}, ${{ matrix.db }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [docker, k3d]
+        db: [pg15, pg16]
+    env:
+      REGISTRY: ghcr.io/${{ toLower(github.repository_owner) }}
+      TAG: sha-${{ github.sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: v1.30.0
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.14.4
+
+      - name: Install k3d
+        run: |
+          set -euo pipefail
+          curl -sSfL https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | sudo bash
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Determine Helm arguments
+        id: helm
+        run: |
+          set -euo pipefail
+          case "${{ matrix.db }}" in
+            pg15)
+              image="postgres:15.6-alpine"
+              ;;
+            pg16)
+              image="postgres:16.3-alpine"
+              ;;
+            *)
+              echo "unsupported database option: ${{ matrix.db }}" >&2
+              exit 1
+              ;;
+          esac
+          args="--set postgres.image=${image} --set migrate.waitForDatabase.image=${image} --set verifySchema.waitForDatabase.image=${image}"
+          printf 'args=%s\n' "$args" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare images
+        id: images
+        run: |
+          set -euo pipefail
+          registry="${REGISTRY}"
+          tag="${TAG}"
+          images=(api worker web)
+          pulled=true
+          for img in "${images[@]}"; do
+            if ! docker pull "${registry}/keepstack-${img}:${tag}"; then
+              pulled=false
+              break
+            fi
+          done
+          if [[ "${pulled}" == "true" ]]; then
+            echo "Pulled release images from ${registry}" >&2
+            printf 'source=%s\n' "remote" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "Release images not available; will build locally." >&2
+          printf 'source=%s\n' "local" >> "$GITHUB_OUTPUT"
+
+      - name: Build images locally
+        if: steps.images.outputs.source == 'local'
+        run: |
+          set -euo pipefail
+          registry="${REGISTRY}"
+          tag="${TAG}"
+          docker buildx build --platform linux/amd64 --load -t "${registry}/keepstack-api:${tag}" -f apps/api/Dockerfile .
+          docker buildx build --platform linux/amd64 --load -t "${registry}/keepstack-worker:${tag}" -f apps/worker/Dockerfile .
+          docker buildx build --platform linux/amd64 --load -t "${registry}/keepstack-web:${tag}" -f apps/web/Dockerfile .
+
+      - name: Run smoke tests
+        env:
+          STACK_ENV: ${{ matrix.env }}
+          HELM_ARGS: ${{ steps.helm.outputs.args }}
+          KS_NAMESPACE: keepstack
+          KS_RELEASE: keepstack
+        run: make smoke
+
+      - name: Collect diagnostics
+        if: failure()
+        run: |
+          set -euo pipefail
+          diag_dir="diagnostics/${{ matrix.env }}-${{ matrix.db }}"
+          mkdir -p "${diag_dir}"
+          kubectl get nodes -o wide > "${diag_dir}/kubectl-get-nodes.txt" 2>&1 || true
+          kubectl get pods -A -o wide > "${diag_dir}/kubectl-get-pods.txt" 2>&1 || true
+          kubectl get events -A --sort-by=.metadata.creationTimestamp > "${diag_dir}/kubectl-get-events.txt" 2>&1 || true
+          kubectl -n keepstack get all > "${diag_dir}/kubectl-keepstack-get-all.txt" 2>&1 || true
+          for deploy in api worker web; do
+            kubectl -n keepstack logs deployment/keepstack-keepstack-${deploy} --tail=200 > "${diag_dir}/kubectl-logs-${deploy}.txt" 2>&1 || true
+          done
+          if [[ -d artifacts ]]; then
+            tar -czf "${diag_dir}/artifacts.tgz" artifacts
+          fi
+
+      - name: Upload diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-${{ matrix.env }}-${{ matrix.db }}-diagnostics
+          path: diagnostics
+          if-no-files-found: warn
