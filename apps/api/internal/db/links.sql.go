@@ -403,9 +403,8 @@ WHERE l.user_id = $2
     END
     OR l.url ILIKE '%' || $4::text || '%'
   )
-  AND $6 = $6
 ORDER BY l.created_at DESC
-LIMIT $6 OFFSET $7
+LIMIT $7::int OFFSET $6::int
 `
 
 type ListLinksParams struct {
@@ -414,8 +413,8 @@ type ListLinksParams struct {
 	Favorite       pgtype.Bool
 	Query          pgtype.Text
 	EnableFullText bool
-	PageLimit      int32
 	PageOffset     int32
+	PageLimit      int32
 }
 
 type ListLinksRow struct {
@@ -444,8 +443,8 @@ func (q *Queries) ListLinks(ctx context.Context, arg ListLinksParams) ([]ListLin
 		arg.Favorite,
 		arg.Query,
 		arg.EnableFullText,
-		arg.PageLimit,
 		arg.PageOffset,
+		arg.PageLimit,
 	)
 	if err != nil {
 		return nil, err
@@ -548,9 +547,8 @@ WHERE l.user_id = $2
           AND lt.tag_id = tag_id
     )
   )
-  AND $6 = $6
 ORDER BY l.created_at DESC
-LIMIT $6 OFFSET $7
+LIMIT $7::int OFFSET $6::int
 `
 
 type ListLinksWithTagsParams struct {
@@ -559,8 +557,8 @@ type ListLinksWithTagsParams struct {
 	Favorite       pgtype.Bool
 	Query          pgtype.Text
 	EnableFullText bool
-	PageLimit      int32
 	PageOffset     int32
+	PageLimit      int32
 }
 
 type ListLinksWithTagsRow struct {
@@ -589,8 +587,8 @@ func (q *Queries) ListLinksWithTags(ctx context.Context, arg ListLinksWithTagsPa
 		arg.Favorite,
 		arg.Query,
 		arg.EnableFullText,
-		arg.PageLimit,
 		arg.PageOffset,
+		arg.PageLimit,
 	)
 	if err != nil {
 		return nil, err
