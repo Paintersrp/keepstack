@@ -258,7 +258,7 @@ touching the ingress manifest.
 3. `cd apps/web && npm run build` – ensure the Suggested filter compiles
 4. `helm upgrade --install keepstack deploy/charts/keepstack -n keepstack -f deploy/values/dev.yaml --wait`
 5. `make verify-obs` – confirm ServiceMonitor wiring and metrics exposure
-6. `make smoke` – exercise the full workflow, including resurfacer automation (use `make smoke-fast` to skip heavier checks)
+6. `make smoke` – exercise the full workflow, including resurfacer automation (see [docs/smoke.md](docs/smoke.md) for tag options and the `make smoke-fast` shortcut)
 7. `make verify-alerts` – provoke and clear API/worker alerts end-to-end
 8. `make backup-now` and `DST_NS=restore-drill make restore-drill` – validate database backup + restore workflow
 
@@ -302,14 +302,16 @@ values out of Helm overrides.
    these values if your cluster needs more time to drain requests before a
    rollout.
 
-6. **Seed sample data and run a smoke test**
+6. **Seed sample data and run smoke tests**
 
    ```sh
    make seed
-   make smoke
+   make smoke        # or make smoke-fast
    ```
 
-   The seed helper targets `http://keepstack.localtest.me:18080` by default, but it
+   Review [docs/smoke.md](docs/smoke.md) for tag selection, environment
+   overrides, and troubleshooting tips. The seed helper targets
+   `http://keepstack.localtest.me:18080` by default, but it
    now falls back to a temporary `kubectl port-forward` if that hostname is
    unreachable. The bundled ingress listener binds an IPv4-only address, so
    pointing `keepstack.localtest.me` at `::1` (or any unreachable IP) will cause
@@ -338,10 +340,11 @@ values out of Helm overrides.
 > sequentially create the k3d cluster, build (or `build-local` when available),
 > push images only when required, deploy the Helm chart, and seed example data.
 > When it completes it prints the ingress URL plus the bootstrap credentials
-> sourced from `deploy/values/dev.yaml`. Follow up with `make smoke` to run the
-> comprehensive smoke test (or `make smoke-fast` for a lighter pass) and `make verify-obs` if you want to confirm the
-> observability stack is scraping metrics—both remain optional but are handy
-> confidence checks before you start developing.
+> sourced from `deploy/values/dev.yaml`. Follow up with `make smoke` (or `make
+> smoke-fast`) as outlined in [docs/smoke.md](docs/smoke.md), and `make
+> verify-obs` if you want to confirm the observability stack is scraping
+> metrics—both remain optional but are handy confidence checks before you start
+> developing.
 
 > ℹ️ The bootstrap path now defaults backups to an ephemeral `emptyDir` volume
 > so the Helm release no longer blocks when a PersistentVolumeClaim fails to
@@ -351,7 +354,15 @@ values out of Helm overrides.
 
 ### Smoke test expectations
 
-`make smoke` drives the full verification workflow: it reuses the v0.2 link, tag, and highlight assertions, then checks Prometheus metrics exposure, triggers an on-demand resurfacer Job, and confirms recommendations are returned by the API. The run passes when the original smoke expectations succeed, ServiceMonitors respond, and the resurfacer emits at least one recommendation, proving the API, worker, observability stack, and nightly jobs are operating together. Use `make smoke-fast` when you only need the lighter link, tag, highlight, and digest coverage.
+`make smoke` drives the full verification workflow described in
+[docs/smoke.md](docs/smoke.md): it reuses the v0.2 link, tag, and highlight
+assertions, then checks Prometheus metrics exposure, triggers an on-demand
+resurfacer Job, and confirms recommendations are returned by the API. The run
+passes when the original smoke expectations succeed, ServiceMonitors respond,
+and the resurfacer emits at least one recommendation, proving the API, worker,
+observability stack, and nightly jobs are operating together. Use `make
+smoke-fast` (also detailed in the smoke docs) when you only need the lighter
+link, tag, highlight, and digest coverage.
 
 ## Verify v0.3
 
@@ -480,9 +491,9 @@ With the stack running, install Keepstack using `deploy/values/dev.yaml` (observ
 - **Image builds**: `make build` creates linux/amd64 images tagged with `sha-<short commit>`.
 - **CI**: GitHub Actions runs Go tests, web builds, Docker image pushes to GHCR, and `helm lint` on every PR and main push.
 
-### Smoke test script usage & troubleshooting
+### Smoke test suite usage & troubleshooting
 
-- **Basic usage**: Run `make smoke` once the Helm release is ready. Override defaults such as `SMOKE_BASE_URL`, `SMOKE_POST_TIMEOUT`, or `SMOKE_POLL_TIMEOUT` to target alternative ingress URLs or tune slow environments. For a quicker run that skips observability and resurfacer checks, call `make smoke-fast` or override `SMOKE_TAGS` before invoking `make smoke`.
+- **Basic usage**: Run `make smoke` once the Helm release is ready. Override defaults such as `SMOKE_BASE_URL`, `SMOKE_TIMEOUT`, or `SMOKE_POLL_TIMEOUT` to target alternative ingress URLs or tune slow environments. For a quicker run that skips observability and resurfacer checks, call `make smoke-fast` or override `SMOKE_TAGS` before invoking `make smoke`. See [docs/smoke.md](docs/smoke.md) for the full tag matrix, environment variables, and the mapping from legacy Bash checks to Go subtests.
 - **Seed connectivity issues**: `make seed` wraps `scripts/dev_seed.sh`. If the script reports repeated `000` statuses or cURL `7/28/52` errors, point it at a reachable API endpoint with `SEED_URL` or direct the port-forward fallback by overriding `SEED_NAMESPACE` and, if needed, `SEED_RELEASE`.
 - **Digest dry-run**: Export `DIGEST_TEST=1` to trigger the optional digest preview step. The smoke targets default to the `log://` SMTP transport when no `SMTP_URL` is provided so the API logs the rendered email instead of attempting SMTP delivery.
 - **Ingress routing failures**: If the script reports connection or DNS errors, confirm the ingress controller is ready with `kubectl -n ingress-nginx get pods` and that `/etc/hosts` (or your DNS) resolves `keepstack.localtest.me` to an IPv4 address. The bundled ingress listener does not bind IPv6, so mapping the hostname to `::1` (or leaving it unreachable) prevents `make bootstrap-dev` and the smoke tests from contacting the API. When IPv4 resolution is unavailable, point the helpers at an alternative endpoint via `SEED_URL` and `SMOKE_BASE_URL`.
@@ -493,6 +504,7 @@ With the stack running, install Keepstack using `deploy/values/dev.yaml` (observ
   migrations ran successfully.
 - **Link publish failures**: Persistent HTTP `5xx` errors or `timeout waiting on ack` messages when posting new links can indicate the API pods cannot reach NATS. Confirm the `keepstack-allow-api-to-nats` NetworkPolicy is installed, that its podSelectors match the API and NATS labels via `kubectl -n keepstack describe netpol keepstack-allow-api-to-nats`, and that the NATS StatefulSet is healthy with `kubectl -n keepstack get statefulset keepstack-nats`.
 - **Tear down**: Clean up the development environment with `make dev-down` after smoke testing to delete the k3d cluster.
+- **Archived scripts**: The retired Bash harness lives under [`scripts/archive/smoke`](scripts/archive/smoke) if you need to reference the old implementation while extending the Go suite.
 
 ## v0.1 Scope & Definition of Done
 
