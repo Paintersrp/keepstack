@@ -12,8 +12,8 @@ ROOT_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 CLUSTER ?= keepstack
 PROMETHEUS_RELEASE ?= kube-prom-stack
 
-.PHONY: help d dev-up dev-down build push helm-dev logs seed bootstrap-dev dash-grafana smoke smoke-v02 digest-once backup-now \
-        resurfacer-now verify-obs verify-alerts restore-drill rollout-observe smoke-v03 verify-schema test build-local
+.PHONY: help d dev-up dev-down build push helm-dev logs seed bootstrap-dev dash-grafana smoke smoke-fast digest-once backup-now \
+        resurfacer-now verify-obs verify-alerts restore-drill rollout-observe verify-schema test build-local _smoke-run
 
 help:
 	@grep -E '^[a-zA-Z0-9_-]+:([^=]|$$)' $(MAKEFILE_LIST) | cut -d':' -f1 | sort | uniq
@@ -190,15 +190,38 @@ bootstrap-dev:
 dash-grafana:
 	kubectl -n monitoring port-forward svc/$(PROMETHEUS_RELEASE)-grafana 3000:80
 
-smoke:
-	$(ROOT_DIR)scripts/smoke.sh
+SMOKE_TAGS_FULL ?= digest,observability,resurfacer
+SMOKE_TAGS_FAST ?= digest
 
-smoke-v02:
-	if [[ -n "$${DIGEST_TEST:-}" && -z "$${SMTP_URL:-}" ]]; then export SMTP_URL=log://; fi; \
-	$(ROOT_DIR)scripts/smoke-v02.sh
+smoke:
+        @SMOKE_TAGS="$(if $(strip $(SMOKE_TAGS)),$(strip $(SMOKE_TAGS)),$(SMOKE_TAGS_FULL))" $(MAKE) --no-print-directory _smoke-run
+
+smoke-fast:
+        @SMOKE_TAGS="$(if $(strip $(SMOKE_TAGS)),$(strip $(SMOKE_TAGS)),$(SMOKE_TAGS_FAST))" $(MAKE) --no-print-directory _smoke-run
+
+_smoke-run:
+        @set -euo pipefail; \
+                scripts_dir="$(ROOT_DIR)scripts"; \
+                cleanup() { \
+                        status="$$?"; \
+                        echo "==> Tearing down Keepstack stack"; \
+                        if ! "$$scripts_dir/stack_down.sh"; then \
+                                echo "Stack teardown encountered an error" >&2; \
+                        fi; \
+                        exit "$$status"; \
+                }; \
+                trap 'cleanup' EXIT INT TERM; \
+                echo "==> Bringing Keepstack stack up"; \
+                "$$scripts_dir/stack_up.sh"; \
+                echo "==> Waiting for Keepstack stack readiness"; \
+                "$$scripts_dir/wait_ready.sh"; \
+                echo "==> Running smoke tests (SMOKE_TAGS=$${SMOKE_TAGS:-})"; \
+                go test ./test/smoke; \
+                trap - EXIT INT TERM; \
+                cleanup
 
 digest-once:
-	kubectl -n $(NAMESPACE) create job digest-once-$$(date +%s) --from=cronjob/keepstack-digest
+        kubectl -n $(NAMESPACE) create job digest-once-$$(date +%s) --from=cronjob/keepstack-digest
 
 backup-now:
 	$(ROOT_DIR)scripts/backup-now.sh
@@ -216,10 +239,7 @@ restore-drill:
 	$(ROOT_DIR)scripts/restore-drill.sh
 
 rollout-observe:
-	$(ROOT_DIR)scripts/rollout-observe.sh
-
-smoke-v03:
-	$(ROOT_DIR)scripts/smoke-v03.sh
+        $(ROOT_DIR)scripts/rollout-observe.sh
 
 verify-schema:
 	kubectl -n $(NAMESPACE) delete job $(VERIFY_JOB) --ignore-not-found
