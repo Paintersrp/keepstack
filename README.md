@@ -258,7 +258,7 @@ touching the ingress manifest.
 3. `cd apps/web && npm run build` – ensure the Suggested filter compiles
 4. `helm upgrade --install keepstack deploy/charts/keepstack -n keepstack -f deploy/values/dev.yaml --wait`
 5. `make verify-obs` – confirm ServiceMonitor wiring and metrics exposure
-6. `make smoke-v03` – exercise the full v0.3 workflow, including resurfacer automation
+6. `make smoke` – exercise the full workflow, including resurfacer automation (use `make smoke-fast` to skip heavier checks)
 7. `make verify-alerts` – provoke and clear API/worker alerts end-to-end
 8. `make backup-now` and `DST_NS=restore-drill make restore-drill` – validate database backup + restore workflow
 
@@ -306,7 +306,7 @@ values out of Helm overrides.
 
    ```sh
    make seed
-   make smoke-v03
+   make smoke
    ```
 
    The seed helper targets `http://keepstack.localtest.me:18080` by default, but it
@@ -338,8 +338,8 @@ values out of Helm overrides.
 > sequentially create the k3d cluster, build (or `build-local` when available),
 > push images only when required, deploy the Helm chart, and seed example data.
 > When it completes it prints the ingress URL plus the bootstrap credentials
-> sourced from `deploy/values/dev.yaml`. Follow up with `make smoke-v03` to run
-> the comprehensive smoke test and `make verify-obs` if you want to confirm the
+> sourced from `deploy/values/dev.yaml`. Follow up with `make smoke` to run the
+> comprehensive smoke test (or `make smoke-fast` for a lighter pass) and `make verify-obs` if you want to confirm the
 > observability stack is scraping metrics—both remain optional but are handy
 > confidence checks before you start developing.
 
@@ -351,7 +351,7 @@ values out of Helm overrides.
 
 ### Smoke test expectations
 
-`make smoke-v03` drives the v0.3 verification workflow: it reuses the v0.2 link, tag, and highlight assertions, then checks Prometheus metrics exposure, triggers an on-demand resurfacer Job, and confirms recommendations are returned by the API. The run passes when the original smoke expectations succeed, ServiceMonitors respond, and the resurfacer emits at least one recommendation, proving the API, worker, observability stack, and nightly jobs are operating together.
+`make smoke` drives the full verification workflow: it reuses the v0.2 link, tag, and highlight assertions, then checks Prometheus metrics exposure, triggers an on-demand resurfacer Job, and confirms recommendations are returned by the API. The run passes when the original smoke expectations succeed, ServiceMonitors respond, and the resurfacer emits at least one recommendation, proving the API, worker, observability stack, and nightly jobs are operating together. Use `make smoke-fast` when you only need the lighter link, tag, highlight, and digest coverage.
 
 ## Verify v0.3
 
@@ -408,7 +408,7 @@ Once the core workloads are ready, run the verification commands in order:
 
 ```sh
 make verify-obs
-make smoke-v03
+make smoke
 make verify-alerts
 make backup-now
 DST_NS=keepstack-restore make restore-drill
@@ -422,7 +422,7 @@ Collect the required evidence along the way:
 
 `make verify-obs` confirms the ServiceMonitor resources exist and that both API and worker pods expose the expected Prometheus metrics before any smoke traffic runs. If the script reports missing monitors, re-run `make helm-dev` with `observability.enabled=true` until they appear.
 
-`make smoke-v03` publishes the seed link, validates tags and highlights, verifies that the resurfacer Job completes, and calls `/api/recommendations` to confirm resurfaced items are stored.
+`make smoke` publishes the seed link, validates tags and highlights, verifies that the resurfacer Job completes, and calls `/api/recommendations` to confirm resurfaced items are stored. Run `make smoke-fast` when you only need the leaner assertions.
 
 `make verify-alerts` temporarily scales NATS to zero, injects API errors, and posts failing worker jobs so the `KeepstackHighErrorRate` and `KeepstackWorkerFailures` alerts fire. It then restores normal traffic and waits for the alerts to return to the `inactive` state.
 
@@ -482,9 +482,9 @@ With the stack running, install Keepstack using `deploy/values/dev.yaml` (observ
 
 ### Smoke test script usage & troubleshooting
 
-- **Basic usage**: Run `make smoke-v03` once the Helm release is ready. Override defaults such as `SMOKE_BASE_URL`, `SMOKE_POST_TIMEOUT`, or `SMOKE_POLL_TIMEOUT` to target alternative ingress URLs or tune slow environments. For a narrower pass that only exercises the legacy flow, call `./scripts/smoke-v02.sh` directly.
+- **Basic usage**: Run `make smoke` once the Helm release is ready. Override defaults such as `SMOKE_BASE_URL`, `SMOKE_POST_TIMEOUT`, or `SMOKE_POLL_TIMEOUT` to target alternative ingress URLs or tune slow environments. For a quicker run that skips observability and resurfacer checks, call `make smoke-fast` or override `SMOKE_TAGS` before invoking `make smoke`.
 - **Seed connectivity issues**: `make seed` wraps `scripts/dev_seed.sh`. If the script reports repeated `000` statuses or cURL `7/28/52` errors, point it at a reachable API endpoint with `SEED_URL` or direct the port-forward fallback by overriding `SEED_NAMESPACE` and, if needed, `SEED_RELEASE`.
-- **Digest dry-run**: Export `DIGEST_TEST=1` to trigger the optional digest preview step. When set, `make smoke-v03` inherits the `log://` SMTP fallback from `smoke-v02` so the API logs the rendered email instead of attempting SMTP delivery.
+- **Digest dry-run**: Export `DIGEST_TEST=1` to trigger the optional digest preview step. The smoke targets default to the `log://` SMTP transport when no `SMTP_URL` is provided so the API logs the rendered email instead of attempting SMTP delivery.
 - **Ingress routing failures**: If the script reports connection or DNS errors, confirm the ingress controller is ready with `kubectl -n ingress-nginx get pods` and that `/etc/hosts` (or your DNS) resolves `keepstack.localtest.me` to an IPv4 address. The bundled ingress listener does not bind IPv6, so mapping the hostname to `::1` (or leaving it unreachable) prevents `make bootstrap-dev` and the smoke tests from contacting the API. When IPv4 resolution is unavailable, point the helpers at an alternative endpoint via `SEED_URL` and `SMOKE_BASE_URL`.
 - **Pending database migrations**: A `201` POST followed by repeated polling without the link appearing usually indicates the worker cannot finish migrations. Check the Postgres pod logs (`kubectl -n keepstack logs statefulset/keepstack-postgres`) and re-run `helm-dev` after resolving schema issues.
 - **API readiness**: HTTP `5xx` responses or cURL timeouts imply the API deployment is still starting. Readiness now verifies the

@@ -148,7 +148,7 @@ jobs:
           kubectl -n keepstack rollout status deployment/keepstack-web --timeout=5m
 
       - name: Run smoke tests
-        run: just smoke-v03
+        run: make smoke
 
       - name: Collect Grafana dashboard
         if: ${{ always() }}
