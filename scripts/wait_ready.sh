@@ -51,6 +51,20 @@ wait_for_resource_creation() {
 
 rollout_with_retries() {
     local resource="$1"
+    local resource_type="$2"
+
+    if [[ "${resource_type}" == "cronjob" ]]; then
+        # CronJobs do not implement the rollout status subresource. Consider the CronJob ready once it exists
+        # and is not suspended.
+        local suspend
+        suspend="$(kubectl -n "${NAMESPACE}" get "${resource}" -o jsonpath='{.spec.suspend}' 2>/dev/null || true)"
+        if [[ "${suspend,,}" == "true" ]]; then
+            echo "CronJob ${resource} is suspended" >&2
+            return 1
+        fi
+        return 0
+    fi
+
     local attempts=0
     while (( attempts < ROLL_OUT_MAX_ATTEMPTS )); do
         if kubectl -n "${NAMESPACE}" rollout status "${resource}" --timeout="${ROLL_OUT_STATUS_TIMEOUT}"; then
@@ -87,7 +101,7 @@ for component in ${COMPONENTS}; do
         dump_component_diagnostics "${resource_type}" "${resource_name}" "${component}"
         exit 1
     fi
-    if ! rollout_with_retries "${resource}"; then
+    if ! rollout_with_retries "${resource}" "${resource_type}"; then
         echo "Rollout failed for ${resource}" >&2
         dump_component_diagnostics "${resource_type}" "${resource_name}" "${component}"
         exit 1
