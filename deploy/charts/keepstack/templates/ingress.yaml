@@ -34,6 +34,27 @@ spec:
                 name: {{ include "keepstack.fullname" . }}-api
                 port:
                   number: 80
+          - path: /healthz
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "keepstack.fullname" . }}-api
+                port:
+                  number: 80
+          - path: /livez
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "keepstack.fullname" . }}-api
+                port:
+                  number: 80
+          - path: /metrics
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "keepstack.fullname" . }}-api
+                port:
+                  number: 80
           - path: /
             pathType: Prefix
             backend:
