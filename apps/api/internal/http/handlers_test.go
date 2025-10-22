@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -23,6 +24,7 @@ import (
 
 	"github.com/example/keepstack/apps/api/internal/config"
 	"github.com/example/keepstack/apps/api/internal/db"
+	"github.com/example/keepstack/apps/api/internal/digest"
 	"github.com/example/keepstack/apps/api/internal/observability"
 	"github.com/example/keepstack/apps/api/internal/queue"
 )
@@ -956,6 +958,107 @@ func TestHandleCreateClaim(t *testing.T) {
 	}
 }
 
+func TestHandleDigestPreviewSuccess(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{DevUserID: uuid.MustParse("10000000-0000-0000-0000-000000000000")}
+
+	expectedHTML := "<html><body>Keepstack Digest</body></html>"
+	var capturedConfig digest.Config
+	var capturedUser uuid.UUID
+
+	srv := &Server{cfg: cfg, metrics: newTestMetrics()}
+	srv.digestConfigLoader = func() (digest.Config, error) {
+		return digest.Config{
+			Limit:     10,
+			Sender:    "Keepstack Digest <digest@example.com>",
+			Recipient: "team@example.com",
+			SMTPURL:   "smtp://user:pass@smtp.dev:2525",
+			Transport: digest.Transport{Scheme: "smtp", Host: "smtp.dev", Port: 2525, Username: "user", Password: "pass"},
+		}, nil
+	}
+	srv.digestServiceFactory = func(_ *pgxpool.Pool, cfg digest.Config) (digestService, error) {
+		capturedConfig = cfg
+		return &stubDigestService{
+			sendFn: func(ctx context.Context, userID uuid.UUID) (string, int, error) {
+				capturedUser = userID
+				return expectedHTML, 3, nil
+			},
+		}, nil
+	}
+
+	e := echo.New()
+	srv.RegisterRoutes(e)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/digest/test", strings.NewReader(`{"limit":5,"transport":"log://"}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	if got := rec.Body.String(); got != expectedHTML {
+		t.Fatalf("unexpected response body: %q", got)
+	}
+	if rec.Header().Get("X-Keepstack-Digest-Count") != "3" {
+		t.Fatalf("expected digest count header to be 3, got %q", rec.Header().Get("X-Keepstack-Digest-Count"))
+	}
+	if capturedUser != cfg.DevUserID {
+		t.Fatalf("expected digest to run for dev user %s, got %s", cfg.DevUserID, capturedUser)
+	}
+	if capturedConfig.Limit != 5 {
+		t.Fatalf("expected limit override to be applied, got %d", capturedConfig.Limit)
+	}
+	if capturedConfig.Transport.Scheme != "log" {
+		t.Fatalf("expected transport scheme log, got %s", capturedConfig.Transport.Scheme)
+	}
+}
+
+func TestHandleDigestPreviewNoUnread(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{DevUserID: uuid.MustParse("20000000-0000-0000-0000-000000000000")}
+
+	srv := &Server{cfg: cfg, metrics: newTestMetrics()}
+	srv.digestConfigLoader = func() (digest.Config, error) {
+		return digest.Config{
+			Limit:     10,
+			Sender:    "Keepstack Digest <digest@example.com>",
+			Recipient: "team@example.com",
+			SMTPURL:   "log://",
+			Transport: digest.Transport{Scheme: "log"},
+		}, nil
+	}
+	srv.digestServiceFactory = func(_ *pgxpool.Pool, cfg digest.Config) (digestService, error) {
+		return &stubDigestService{
+			sendFn: func(ctx context.Context, userID uuid.UUID) (string, int, error) {
+				return "", 0, digest.ErrNoUnreadLinks
+			},
+		}, nil
+	}
+
+	e := echo.New()
+	srv.RegisterRoutes(e)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/digest/test", strings.NewReader(`{}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "no unread links") {
+		t.Fatalf("expected response body to mention no unread links, got %q", rec.Body.String())
+	}
+	if header := rec.Header().Get("X-Keepstack-Digest-Count"); header != "" {
+		t.Fatalf("expected digest count header to be empty, got %q", header)
+	}
+}
+
 func TestHandleCreateClaimDuplicate(t *testing.T) {
 	t.Parallel()
 
@@ -1828,6 +1931,17 @@ func (m *mockQueries) DeleteHighlight(ctx context.Context, id pgtype.UUID) error
 }
 
 var _ queryProvider = (*mockQueries)(nil)
+
+type stubDigestService struct {
+	sendFn func(context.Context, uuid.UUID) (string, int, error)
+}
+
+func (s *stubDigestService) Send(ctx context.Context, userID uuid.UUID) (string, int, error) {
+	if s.sendFn == nil {
+		return "", 0, fmt.Errorf("unexpected Send call")
+	}
+	return s.sendFn(ctx, userID)
+}
 
 type stubPublisher struct {
 	called bool

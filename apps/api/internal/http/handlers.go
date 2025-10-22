@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	stdhttp "net/http"
@@ -29,6 +30,7 @@ import (
 
 	"github.com/example/keepstack/apps/api/internal/config"
 	"github.com/example/keepstack/apps/api/internal/db"
+	"github.com/example/keepstack/apps/api/internal/digest"
 	"github.com/example/keepstack/apps/api/internal/observability"
 	"github.com/example/keepstack/apps/api/internal/queue"
 )
@@ -69,6 +71,7 @@ type healthPool interface {
 type Server struct {
 	cfg       config.Config
 	pool      healthPool
+	poolRaw   *pgxpool.Pool
 	queries   queryProvider
 	publisher queue.Publisher
 	metrics   *observability.Metrics
@@ -77,6 +80,13 @@ type Server struct {
 	highlightLimiterMu sync.Mutex
 	highlightRate      rate.Limit
 	highlightBurst     int
+
+	digestConfigLoader   func() (digest.Config, error)
+	digestServiceFactory func(*pgxpool.Pool, digest.Config) (digestService, error)
+}
+
+type digestService interface {
+	Send(context.Context, uuid.UUID) (string, int, error)
 }
 
 // NewServer builds a Server instance.
@@ -84,12 +94,19 @@ func NewServer(cfg config.Config, pool *pgxpool.Pool, publisher queue.Publisher,
 	return &Server{
 		cfg:               cfg,
 		pool:              pool,
+		poolRaw:           pool,
 		queries:           db.New(pool),
 		publisher:         publisher,
 		metrics:           metrics,
 		highlightLimiters: make(map[uuid.UUID]*rate.Limiter),
 		highlightRate:     rate.Every(time.Minute / 20),
 		highlightBurst:    10,
+		digestConfigLoader: func() (digest.Config, error) {
+			return digest.LoadConfig()
+		},
+		digestServiceFactory: func(pool *pgxpool.Pool, cfg digest.Config) (digestService, error) {
+			return digest.New(pool, cfg)
+		},
 	}
 }
 
@@ -112,6 +129,7 @@ func (s *Server) RegisterRoutes(e *echo.Echo) {
 	api.PATCH("/links/:id", s.handleUpdateLink)
 	api.GET("/recommendations", s.handleListRecommendations)
 	api.POST("/claims", s.handleCreateClaim)
+	api.POST("/digest/:user", s.handleDigestPreview)
 
 	api.GET("/tags", s.handleListTags)
 	api.POST("/tags", s.handleCreateTag)
@@ -128,6 +146,88 @@ func (s *Server) RegisterRoutes(e *echo.Echo) {
 	api.POST("/links/:id/highlights", s.handleCreateHighlight)
 	api.PUT("/links/:id/highlights/:highlightID", s.handleUpdateHighlight)
 	api.DELETE("/links/:id/highlights/:highlightID", s.handleDeleteHighlight)
+}
+
+func (s *Server) loadDigestConfig() (digest.Config, error) {
+	if s.digestConfigLoader != nil {
+		return s.digestConfigLoader()
+	}
+	return digest.LoadConfig()
+}
+
+func (s *Server) newDigestService(cfg digest.Config) (digestService, error) {
+	if s.digestServiceFactory != nil {
+		return s.digestServiceFactory(s.poolRaw, cfg)
+	}
+	if s.poolRaw == nil {
+		return nil, fmt.Errorf("database pool not configured for digest service")
+	}
+	return digest.New(s.poolRaw, cfg)
+}
+
+type digestPreviewRequest struct {
+	Limit     *int   `json:"limit"`
+	Transport string `json:"transport"`
+	Sender    string `json:"sender"`
+	Recipient string `json:"recipient"`
+}
+
+func (s *Server) handleDigestPreview(c echo.Context) error {
+	var req digestPreviewRequest
+	if c.Request().Body != nil {
+		decoder := json.NewDecoder(c.Request().Body)
+		if err := decoder.Decode(&req); err != nil {
+			if !errors.Is(err, io.EOF) {
+				return echo.NewHTTPError(stdhttp.StatusBadRequest, fmt.Sprintf("invalid digest request: %v", err))
+			}
+		}
+	}
+
+	cfg, err := s.loadDigestConfig()
+	if err != nil {
+		log.Printf("load digest config: %v", err)
+		return echo.NewHTTPError(stdhttp.StatusInternalServerError, "digest configuration unavailable")
+	}
+
+	if req.Limit != nil {
+		if *req.Limit <= 0 {
+			return echo.NewHTTPError(stdhttp.StatusBadRequest, "limit must be positive")
+		}
+		cfg.Limit = *req.Limit
+	}
+
+	if req.Transport != "" {
+		transport, err := digest.ParseTransport(req.Transport)
+		if err != nil {
+			return echo.NewHTTPError(stdhttp.StatusBadRequest, fmt.Sprintf("invalid transport: %v", err))
+		}
+		cfg.Transport = transport
+	}
+
+	if req.Sender != "" {
+		cfg.Sender = req.Sender
+	}
+	if req.Recipient != "" {
+		cfg.Recipient = req.Recipient
+	}
+
+	svc, err := s.newDigestService(cfg)
+	if err != nil {
+		log.Printf("create digest service: %v", err)
+		return echo.NewHTTPError(stdhttp.StatusInternalServerError, "digest service unavailable")
+	}
+
+	htmlBody, count, err := svc.Send(c.Request().Context(), s.cfg.DevUserID)
+	if err != nil {
+		if errors.Is(err, digest.ErrNoUnreadLinks) {
+			return c.JSON(stdhttp.StatusOK, map[string]string{"message": "no unread links"})
+		}
+		log.Printf("send digest: %v", err)
+		return echo.NewHTTPError(stdhttp.StatusInternalServerError, "digest send failed")
+	}
+
+	c.Response().Header().Set("X-Keepstack-Digest-Count", strconv.Itoa(count))
+	return c.HTML(stdhttp.StatusOK, htmlBody)
 }
 
 func (s *Server) handleHealthz(c echo.Context) error {

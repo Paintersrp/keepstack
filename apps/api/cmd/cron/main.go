@@ -84,7 +84,7 @@ func runDigest(logger *log.Logger) error {
 		return err
 	}
 
-	count, err := svc.Send(ctx, cfg.DevUserID)
+	_, count, err := svc.Send(ctx, cfg.DevUserID)
 	if err != nil {
 		return err
 	}
