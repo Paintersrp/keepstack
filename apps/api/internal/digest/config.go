@@ -47,6 +47,11 @@ func LoadConfig() (Config, error) {
 	return cfg, nil
 }
 
+// ParseTransport constructs a Transport definition from the provided SMTP_URL string.
+func ParseTransport(raw string) (Transport, error) {
+	return parseSMTPURL(raw)
+}
+
 func parseSMTPURL(raw string) (Transport, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
