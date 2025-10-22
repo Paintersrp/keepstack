@@ -126,8 +126,16 @@ LEFT JOIN LATERAL (
     WHERE h.link_id = l.id
 ) AS highlight_data ON TRUE
 CROSS JOIN LATERAL (
-    SELECT sqlc.arg('tag_ids')::int4[] AS tag_ids
+    SELECT sqlc.arg('tag_ids')::int4[] AS tag_ids,
+           COALESCE(array_length(sqlc.arg('tag_ids')::int4[], 1), 0) AS tag_count
 ) AS filter_params
+LEFT JOIN LATERAL (
+    SELECT COUNT(DISTINCT lt.tag_id) AS match_count
+    FROM link_tags lt
+    WHERE lt.link_id = l.id
+      AND filter_params.tag_ids IS NOT NULL
+      AND lt.tag_id = ANY(filter_params.tag_ids)
+) AS tag_matches ON TRUE
 WHERE l.user_id = sqlc.arg('user_id')
   AND (
     COALESCE(sqlc.narg('favorite')::boolean, l.favorite) = l.favorite
@@ -140,15 +148,9 @@ WHERE l.user_id = sqlc.arg('user_id')
     END
     OR l.url ILIKE '%' || sqlc.narg('query')::text || '%'
   )
-  AND NOT EXISTS (
-    SELECT 1
-    FROM unnest(filter_params.tag_ids) AS tag_id
-    WHERE NOT EXISTS (
-        SELECT 1
-        FROM link_tags lt
-        WHERE lt.link_id = l.id
-          AND lt.tag_id = tag_id
-    )
+  AND (
+    filter_params.tag_ids IS NULL
+    OR COALESCE(tag_matches.match_count, 0) = filter_params.tag_count
   )
 ORDER BY l.created_at DESC
 LIMIT sqlc.arg('page_limit')::int OFFSET sqlc.arg('page_offset')::int;
@@ -175,8 +177,16 @@ WHERE l.user_id = sqlc.arg('user_id')
 SELECT COUNT(*)
 FROM links l
 CROSS JOIN LATERAL (
-    SELECT sqlc.arg('tag_ids')::int4[] AS tag_ids
+    SELECT sqlc.arg('tag_ids')::int4[] AS tag_ids,
+           COALESCE(array_length(sqlc.arg('tag_ids')::int4[], 1), 0) AS tag_count
 ) AS filter_params
+LEFT JOIN LATERAL (
+    SELECT COUNT(DISTINCT lt.tag_id) AS match_count
+    FROM link_tags lt
+    WHERE lt.link_id = l.id
+      AND filter_params.tag_ids IS NOT NULL
+      AND lt.tag_id = ANY(filter_params.tag_ids)
+) AS tag_matches ON TRUE
 WHERE l.user_id = sqlc.arg('user_id')
   AND (
     COALESCE(sqlc.narg('favorite')::boolean, l.favorite) = l.favorite
@@ -189,15 +199,9 @@ WHERE l.user_id = sqlc.arg('user_id')
     END
     OR l.url ILIKE '%' || sqlc.narg('query')::text || '%'
   )
-  AND NOT EXISTS (
-    SELECT 1
-    FROM unnest(filter_params.tag_ids) AS tag_id
-    WHERE NOT EXISTS (
-        SELECT 1
-        FROM link_tags lt
-        WHERE lt.link_id = l.id
-          AND lt.tag_id = tag_id
-    )
+  AND (
+    filter_params.tag_ids IS NULL
+    OR COALESCE(tag_matches.match_count, 0) = filter_params.tag_count
   );
 
 -- name: UpsertArchive :exec

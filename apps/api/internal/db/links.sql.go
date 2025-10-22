@@ -72,8 +72,16 @@ const countLinksWithTags = `-- name: CountLinksWithTags :one
 SELECT COUNT(*)
 FROM links l
 CROSS JOIN LATERAL (
-    SELECT $1::int4[] AS tag_ids
+    SELECT $1::int4[] AS tag_ids,
+           COALESCE(array_length($1::int4[], 1), 0) AS tag_count
 ) AS filter_params
+LEFT JOIN LATERAL (
+    SELECT COUNT(DISTINCT lt.tag_id) AS match_count
+    FROM link_tags lt
+    WHERE lt.link_id = l.id
+      AND filter_params.tag_ids IS NOT NULL
+      AND lt.tag_id = ANY(filter_params.tag_ids)
+) AS tag_matches ON TRUE
 WHERE l.user_id = $2
   AND (
     COALESCE($3::boolean, l.favorite) = l.favorite
@@ -86,15 +94,9 @@ WHERE l.user_id = $2
     END
     OR l.url ILIKE '%' || $4::text || '%'
   )
-  AND NOT EXISTS (
-    SELECT 1
-    FROM unnest(filter_params.tag_ids) AS tag_id
-    WHERE NOT EXISTS (
-        SELECT 1
-        FROM link_tags lt
-        WHERE lt.link_id = l.id
-          AND lt.tag_id = tag_id
-    )
+  AND (
+    filter_params.tag_ids IS NULL
+    OR COALESCE(tag_matches.match_count, 0) = filter_params.tag_count
   )
 `
 
@@ -523,8 +525,16 @@ LEFT JOIN LATERAL (
     WHERE h.link_id = l.id
 ) AS highlight_data ON TRUE
 CROSS JOIN LATERAL (
-    SELECT $1::int4[] AS tag_ids
+    SELECT $1::int4[] AS tag_ids,
+           COALESCE(array_length($1::int4[], 1), 0) AS tag_count
 ) AS filter_params
+LEFT JOIN LATERAL (
+    SELECT COUNT(DISTINCT lt.tag_id) AS match_count
+    FROM link_tags lt
+    WHERE lt.link_id = l.id
+      AND filter_params.tag_ids IS NOT NULL
+      AND lt.tag_id = ANY(filter_params.tag_ids)
+) AS tag_matches ON TRUE
 WHERE l.user_id = $2
   AND (
     COALESCE($3::boolean, l.favorite) = l.favorite
@@ -537,15 +547,9 @@ WHERE l.user_id = $2
     END
     OR l.url ILIKE '%' || $4::text || '%'
   )
-  AND NOT EXISTS (
-    SELECT 1
-    FROM unnest(filter_params.tag_ids) AS tag_id
-    WHERE NOT EXISTS (
-        SELECT 1
-        FROM link_tags lt
-        WHERE lt.link_id = l.id
-          AND lt.tag_id = tag_id
-    )
+  AND (
+    filter_params.tag_ids IS NULL
+    OR COALESCE(tag_matches.match_count, 0) = filter_params.tag_count
   )
 ORDER BY l.created_at DESC
 LIMIT $7::int OFFSET $6::int
