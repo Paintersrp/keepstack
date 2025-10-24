@@ -23,6 +23,7 @@ import (
 
 	"github.com/example/keepstack/apps/api/internal/config"
 	"github.com/example/keepstack/apps/api/internal/db"
+	"github.com/example/keepstack/apps/api/internal/digest"
 	"github.com/example/keepstack/apps/api/internal/observability"
 	"github.com/example/keepstack/apps/api/internal/queue"
 )
@@ -94,6 +95,120 @@ func TestHandleCreateLinkInvalidURL(t *testing.T) {
 	}
 	if publisher.called {
 		t.Fatalf("expected publisher not to be invoked")
+	}
+}
+
+func TestHandleDigestDryRunSuccess(t *testing.T) {
+	t.Parallel()
+
+	devUser := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	cfg := config.Config{DevUserID: devUser}
+
+	baseDigestCfg := digest.Config{
+		Limit:     10,
+		Sender:    "sender@example.com",
+		Recipient: "recipient@example.com",
+		SMTPURL:   "smtp://user:pass@smtp.example.com:587",
+		Transport: digest.Transport{Scheme: "smtp", Host: "smtp.example.com", Port: 587, Username: "user", Password: "pass"},
+	}
+
+	var capturedCfg digest.Config
+	var capturedUser uuid.UUID
+
+	srv := &Server{
+		cfg:     cfg,
+		queries: &mockQueries{},
+		metrics: newTestMetrics(),
+		digestConfigLoader: func() (digest.Config, error) {
+			return baseDigestCfg, nil
+		},
+		digestServiceFactory: func(cfg digest.Config) (digestService, error) {
+			capturedCfg = cfg
+			return digestServiceFunc(func(ctx context.Context, userID uuid.UUID) (int, string, error) {
+				capturedUser = userID
+				return 3, "<html><body>Keepstack Digest</body></html>", nil
+			}), nil
+		},
+	}
+
+	e := echo.New()
+	srv.RegisterRoutes(e)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/digest/test", strings.NewReader(`{"transport":"log://"}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d -- %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+
+	if capturedUser != devUser {
+		t.Fatalf("expected digest to run for dev user %s, got %s", devUser, capturedUser)
+	}
+	if capturedCfg.Transport.Scheme != "log" {
+		t.Fatalf("expected transport override to be log, got %q", capturedCfg.Transport.Scheme)
+	}
+	if capturedCfg.SMTPURL != "log://" {
+		t.Fatalf("expected SMTPURL override to be log://, got %q", capturedCfg.SMTPURL)
+	}
+
+	if got := rec.Header().Get("X-Keepstack-Digest-Count"); got != "3" {
+		t.Fatalf("unexpected digest count header: got %q want %q", got, "3")
+	}
+	if contentType := rec.Header().Get(echo.HeaderContentType); !strings.Contains(contentType, "text/html") {
+		t.Fatalf("expected html content type, got %q", contentType)
+	}
+	if body := rec.Body.String(); !strings.Contains(body, "Keepstack Digest") {
+		t.Fatalf("expected body to contain digest marker, got %q", body)
+	}
+}
+
+func TestHandleDigestDryRunNoUnread(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{DevUserID: uuid.MustParse("22222222-2222-2222-2222-222222222222")}
+
+	srv := &Server{
+		cfg:     cfg,
+		queries: &mockQueries{},
+		metrics: newTestMetrics(),
+		digestConfigLoader: func() (digest.Config, error) {
+			return digest.Config{
+				Limit:     5,
+				Sender:    "sender@example.com",
+				Recipient: "recipient@example.com",
+				SMTPURL:   "log://",
+				Transport: digest.Transport{Scheme: "log"},
+			}, nil
+		},
+		digestServiceFactory: func(cfg digest.Config) (digestService, error) {
+			return digestServiceFunc(func(ctx context.Context, userID uuid.UUID) (int, string, error) {
+				return 0, "", digest.ErrNoUnreadLinks
+			}), nil
+		},
+	}
+
+	e := echo.New()
+	srv.RegisterRoutes(e)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/digest/test", strings.NewReader(`{}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+
+	var payload map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to decode response: %v -- %s", err, rec.Body.String())
+	}
+	if payload["status"] != "no unread links" {
+		t.Fatalf("unexpected status payload: %#v", payload)
 	}
 }
 
@@ -1843,6 +1958,12 @@ func (s *stubPublisher) PublishLinkSaved(ctx context.Context, linkID uuid.UUID) 
 func (s *stubPublisher) Close() {}
 
 var _ queue.Publisher = (*stubPublisher)(nil)
+
+type digestServiceFunc func(context.Context, uuid.UUID) (int, string, error)
+
+func (f digestServiceFunc) Send(ctx context.Context, userID uuid.UUID) (int, string, error) {
+	return f(ctx, userID)
+}
 
 func newTestMetrics() *observability.Metrics {
 	return &observability.Metrics{

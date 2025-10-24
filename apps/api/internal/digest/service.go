@@ -44,26 +44,26 @@ func New(pool *pgxpool.Pool, cfg Config) (*Service, error) {
 }
 
 // Send builds and emails the digest for the provided user. The returned integer represents
-// the number of links included in the message.
-func (s *Service) Send(ctx context.Context, userID uuid.UUID) (int, error) {
+// the number of links included in the message and the string contains the rendered HTML body.
+func (s *Service) Send(ctx context.Context, userID uuid.UUID) (int, string, error) {
 	links, err := s.fetchUnreadLinks(ctx, userID)
 	if err != nil {
-		return 0, fmt.Errorf("fetch unread links: %w", err)
+		return 0, "", fmt.Errorf("fetch unread links: %w", err)
 	}
 	if len(links) == 0 {
-		return 0, ErrNoUnreadLinks
+		return 0, "", ErrNoUnreadLinks
 	}
 
 	htmlBody, err := s.renderHTML(links)
 	if err != nil {
-		return 0, fmt.Errorf("render digest: %w", err)
+		return 0, "", fmt.Errorf("render digest: %w", err)
 	}
 
 	if err := s.dispatch(htmlBody, len(links)); err != nil {
-		return 0, fmt.Errorf("send digest email: %w", err)
+		return 0, "", fmt.Errorf("send digest email: %w", err)
 	}
 
-	return len(links), nil
+	return len(links), htmlBody, nil
 }
 
 type digestLink struct {
