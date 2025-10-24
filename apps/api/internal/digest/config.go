@@ -38,7 +38,7 @@ func LoadConfig() (Config, error) {
 		return Config{}, fmt.Errorf("digest limit must be positive")
 	}
 
-	transport, err := parseSMTPURL(cfg.SMTPURL)
+	transport, err := ParseSMTPURL(cfg.SMTPURL)
 	if err != nil {
 		return Config{}, err
 	}
@@ -47,7 +47,8 @@ func LoadConfig() (Config, error) {
 	return cfg, nil
 }
 
-func parseSMTPURL(raw string) (Transport, error) {
+// ParseSMTPURL converts the provided SMTP_URL-style string into a Transport.
+func ParseSMTPURL(raw string) (Transport, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return Transport{}, fmt.Errorf("SMTP_URL must not be empty")
